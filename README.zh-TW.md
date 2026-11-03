@@ -47,11 +47,15 @@ Panel Opacity 的半透明遮罩會向上延伸到左側標題列，包含導覽
 
 圖片會在本機縮放，沒有上傳、分析對話或自動啟動服務。主題檔包含完整圖片，請自行決定儲存與分享的位置。
 
+使用 **Open in New Window** 開啟的聊天視窗，也會自動套用目前背景，通常在兩秒內完成。連接時已開啟的聊天視窗也會納入；調整設定、**Restore Original** 與結束工具會處理所有已管理的聊天視窗。關閉原始視窗後，其他聊天視窗仍會繼續更新。一般視窗輪詢不會重新套用相同背景，因此不會持續重啟 GIF。
+
+多視窗支援需要重新編譯並開啟新版 Backdrop。結束舊版前，先儲存主題並記下 **Local Port**；新版使用該連接埠 **Connect** 並匯入主題，可沿用目前的 ChatGPT 連線，不必重新啟動 ChatGPT。
+
 ## 支援範圍
 
 - 此附帶成品為 **Apple Silicon / macOS 14 以上**版本。
 - 針對 `/Applications/ChatGPT.app`、Bundle ID `com.openai.codex` 的新版桌面介面製作；已依本機版本 `26.1023.51421` 的介面結構設計。
-- 只處理 `app://-/index.html` 主視窗；不對內嵌瀏覽器、登入頁面或其他網站執行注入。
+- 處理 `app://-/index.html` 聊天視窗，包含 **Open in New Window**；排除內嵌瀏覽器、其他來源、獨立的 `detached-window.html` 瀏覽器外殼，以及寵物、聽寫、Spotlight 和快捷鍵工具視窗。套用與還原都保留應用程式來源及頂層框架檢查。
 - 不修改 ChatGPT 的安裝檔案、不修改登入資料、不關閉系統防護。
 - 套用後需要保留工具開啟。ChatGPT 結束後，本次注入就會失效；下次可重新匯入主題並套用。
 - 恢復外觀不會停用已開啟的本機偵錯連接埠。要停用該連線，請關閉 ChatGPT，再正常重新開啟。
@@ -72,6 +76,7 @@ zsh build.sh
 ```sh
 zsh Tests/run.sh          # 只連線至測試程式自己的 127.0.0.1 模擬服務
 zsh Tests/run-theme.sh    # 獨立 WebKit 記憶體頁面，驗證樣式套用與還原
+zsh Tests/run-windows.sh  # 離線多視窗探索、設定更新與清理
 ```
 
 測試不會連接、重啟或修改 ChatGPT。測試環境與結果請見 `Tests/README.md`。
