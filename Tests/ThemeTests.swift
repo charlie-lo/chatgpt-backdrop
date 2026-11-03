@@ -138,6 +138,19 @@ final class Runner: NSObject, WKNavigationDelegate {
         #bottom-navigation{display:flex;flex-direction:column;flex:1;box-sizing:border-box;padding-bottom:4px}
         #bottom-control{margin-top:auto;height:24px}
         #bottom-main{flex:1;margin-top:var(--app-shell-titlebar-height);border-radius:12px}
+        /* Native work-mode paint roots: the fixed environment pill, attached
+           utility rail, and styled summary island each own one surface fill. */
+        #work-surface-fixture{position:absolute;left:720px;top:280px;width:300px}
+        .bg-surface-elevated-secondary{background-color:rgb(44,44,44)}
+        .bg-background-composer-action-bar{background-color:rgb(38,38,38)}
+        #work-surface-fixture button{background:transparent;color:inherit;pointer-events:auto}
+        [data-in-progress-fixed-content] .bg-surface-elevated-secondary{border:1px solid rgba(255,255,255,.12);border-radius:24px;padding:6px 12px}
+        [data-composer-utility-rail]{min-height:32px}
+        [data-summary-panel-variant].bg-surface-elevated-secondary{border-radius:20px;box-shadow:0 0 0 .5px rgba(255,255,255,.12),0 16px 48px rgba(0,0,0,.6)}
+        [data-summary-panel-variant] header.sticky{position:sticky;top:8px;height:28px}
+        [data-summary-panel-variant] header.sticky::before{content:"";position:absolute;left:0;right:0;top:-8px;height:8px;background-color:rgb(44,44,44);pointer-events:none}
+        .fixture-summary-item-state{background-color:rgba(255,255,255,.08)}
+        .fixture-summary-thumbnail{display:inline-block;width:16px;height:16px;background-color:rgb(102,142,182)}
         </style>
         <script>
         \(engine)
@@ -146,6 +159,7 @@ final class Runner: NSObject, WKNavigationDelegate {
         window.fixtureGIF = 'data:image/gif;base64,' + btoa('GIF89a' + atob('\(Self.animatedGIFBase64)').slice(6));
         window.titlebarControlClicks = 0;
         window.bottomControlClicks = 0;
+        window.workControlClicks = 0;
         window.beforeDOM = __chatGPTBackdrop.apply({imageData: fixtureImage});
         </script></head><body>
         <div id="root" data-app-shell-page-sidebar="true" data-app-shell-page-surface="true" data-app-shell-frame>
@@ -169,6 +183,17 @@ final class Runner: NSObject, WKNavigationDelegate {
               <div id="footer-with-controls" class="_background_fixture _fade_fixture" aria-hidden="true"><button type="button">Preserved footer controls</button></div>
             </div>
             <section id="home-composer" class="_ComposerLayoutRoot_fixture" data-composer-surface-variant="default" data-composer-utility-bar-variant="home"><div id="home-composer-body" class="_ComposerLayoutBody_fixture" data-composer-body>Home composer body</div></section>
+            <div id="work-surface-fixture">
+              <div id="environment-actions" data-in-progress-fixed-content class="group/environment-actions">
+                <div class="flex w-full max-w-(--thread-content-max-width) min-w-0 justify-center"><div class="relative z-10 w-fit max-w-full min-w-0 overflow-hidden rounded-3xl"><div id="environment-pill" class="flex w-max max-w-full min-w-0 items-center gap-2 rounded-3xl border border-border/80 bg-surface-elevated-secondary px-3 py-1.5 text-default"><button id="environment-control" type="button" onclick="workControlClicks++">Edit environment</button></div></div></div>
+              </div>
+              <section id="work-home-composer" class="_ComposerLayoutRoot_fixture" data-composer-surface-variant="default" data-composer-utility-bar-variant="home"><div id="work-utility-wrapper" data-composer-rail data-composer-rail-placement="above" class="_rail_fixture _attached_fixture relative flex min-w-0 flex-col empty:contents border-border/80"><div id="work-utility-rail" data-composer-utility-rail data-composer-rail-item="present" data-composer-rail-placement="above" data-composer-rail-contained class="_item_fixture relative min-w-0 overflow-clip text-default grid select-none px-1 bg-background-composer-action-bar"><div class="flex min-h-0 min-w-0 flex-col"><div class="min-w-0 shrink-0"><div data-composer-utility-bar-scroll-area><button id="project-control" type="button" onclick="workControlClicks++">Choose project</button><button id="computer-control" type="button" onclick="workControlClicks++">This computer</button></div></div></div></div></div><div id="work-home-body" class="_ComposerLayoutBody_fixture" data-composer-body>Work composer body</div></section>
+              <section id="work-summary" data-summary-panel-variant="summary" data-summary-panel-density="comfortable" class="group/summary-panel relative flex max-h-full min-h-0 flex-col overflow-hidden isolate bg-surface-elevated-secondary electron:elevation-prominent"><header id="summary-header" class="sticky top-2 z-10 flex h-7 w-full min-w-0 items-center justify-start gap-2 pb-0.5 text-sm font-normal text-secondary bg-surface-elevated-secondary before:bg-surface-elevated-secondary"><button id="summary-control" type="button" aria-expanded="true" onclick="workControlClicks++">Outputs</button></header><div id="summary-body"><div id="summary-item" class="fixture-summary-item-state"><span id="summary-thumbnail" class="fixture-summary-thumbnail"></span>Subagents</div><div>Sources</div></div></section>
+              <div id="floating-utility-rail" data-composer-utility-rail data-composer-rail-item="present" class="_item_fixture relative min-w-0">Already surfaced floating rail</div>
+              <section id="unstyled-summary" data-summary-panel-variant="summary" class="group/summary-panel relative flex min-h-0 flex-col"><header id="unstyled-summary-header" class="sticky bg-surface-elevated-secondary before:bg-surface-elevated-secondary">Docked native header</header></section>
+              <div id="work-variant-fixtures" hidden></div>
+              <div id="protected-work-dialog" role="dialog" hidden></div><div id="protected-work-menu" role="menu" hidden></div>
+            </div>
           </main>
           <section id="bottom-layout" class="bottom-layout-fixture" data-app-shell-frame data-app-shell-page-surface="true" data-app-shell-page-sidebar="true"><div id="bottom-workspace" data-app-shell-workspace-row><aside id="bottom-sidebar" class="app-shell-left-panel" data-app-shell-left-panel-appearance="translucent"><nav id="bottom-navigation"><button id="bottom-control" type="button" onclick="bottomControlClicks++">Bottom control</button></nav></aside><div id="bottom-main" data-app-shell-main-surface="default">Main pane</div></div></section>
         </div>
@@ -301,6 +326,22 @@ final class Runner: NSObject, WKNavigationDelegate {
     test('early injection queues document readiness', beforeDOM.pending === true && beforeDOM.active === false);
     test('early apply completes at DOMContentLoaded', api.status().active === true);
     api.restore();
+    // Build native-equivalent variants before capturing the restoration
+    // baseline. Hidden fixture hosts still expose real computed CSS styles.
+    const cloneWorkSurface = (node, prefix, host) => {
+      const copy = node.cloneNode(true);
+      for (const child of [copy, ...copy.querySelectorAll('[id]')]) {
+        if (child.id) child.id = prefix + child.id;
+      }
+      host.append(copy);
+      return copy;
+    };
+    const dynamicSummary = cloneWorkSurface(document.getElementById('work-summary'), 'dynamic-', document.getElementById('work-variant-fixtures'));
+    dynamicSummary.setAttribute('data-summary-panel-variant', 'dynamic-isle');
+    for (const [prefix, hostID] of [['dialog-', 'protected-work-dialog'], ['menu-', 'protected-work-menu']]) {
+      const host = document.getElementById(hostID);
+      for (const id of ['environment-actions', 'work-utility-wrapper', 'work-summary']) cloneWorkSurface(document.getElementById(id), prefix, host);
+    }
     const baseline = document.documentElement.outerHTML;
     const code = document.querySelector('pre');
     const dialog = document.querySelector('[role=dialog] [data-message-author-role]');
@@ -364,6 +405,26 @@ final class Runner: NSObject, WKNavigationDelegate {
       const numbers = color.match(/[\d.]+/g).map(Number);
       return numbers.length > 3 ? numbers[3] : 1;
     };
+    const workPanelIDs = ['environment-pill', 'work-utility-rail', 'work-summary'];
+    const workPanels = workPanelIDs.map(id => document.getElementById(id));
+    const workHeader = document.getElementById('summary-header');
+    const workControlIDs = ['environment-control', 'project-control', 'computer-control', 'summary-control'];
+    const workControls = workControlIDs.map(id => document.getElementById(id));
+    const workNative = {
+      borders: workPanels.map(node => getComputedStyle(node).borderTopWidth),
+      radii: workPanels.map(node => getComputedStyle(node).borderRadius),
+      sizes: workPanels.map(node => ({width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height})),
+      itemBackground: getComputedStyle(document.getElementById('summary-item')).backgroundColor,
+      thumbnailBackground: getComputedStyle(document.getElementById('summary-thumbnail')).backgroundColor,
+      unstyledHeaderBackground: getComputedStyle(document.getElementById('unstyled-summary-header')).backgroundColor,
+      unstyledHeaderBefore: getComputedStyle(document.getElementById('unstyled-summary-header'), '::before').backgroundColor,
+      protectedPaint: ['dialog-', 'menu-'].flatMap(prefix => [...workPanelIDs, 'summary-header'].map(id => {
+        const node = document.getElementById(prefix + id);
+        return {id: prefix + id, background: getComputedStyle(node).backgroundColor, shadow: getComputedStyle(node).boxShadow, before: getComputedStyle(node, '::before').backgroundColor};
+      }))
+    };
+    test('work surface fixtures reproduce the three opaque native fills', workPanels.every(node => alpha(node) === 1));
+    test('summary fixture reproduces separate opaque sticky header and cap fills', alpha(workHeader) === 1 && alpha(workHeader, '::before') === 1);
     const decorationAbsent = node => {
       const style = getComputedStyle(node);
       return style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0 ||
@@ -394,6 +455,32 @@ final class Runner: NSObject, WKNavigationDelegate {
     test('reapply owns exactly one style and layer', document.querySelectorAll('[data-chatgpt-backdrop-layer]').length === 1 && document.querySelectorAll('[data-chatgpt-backdrop-style]').length === 1);
     const requestedAlpha = 0.1866135817307692;
     api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: requestedAlpha}); await wait();
+    for (const [index, name] of ['environment pill', 'attached work utility rail', 'summary island'].entries()) {
+      test(name + ' follows requested panel opacity', Math.abs(alpha(workPanels[index]) - requestedAlpha) < 0.005);
+    }
+    test('work panel roots remove broad shadows and background images', workPanels.every(node => getComputedStyle(node).boxShadow === 'none' && getComputedStyle(node).backgroundImage === 'none'));
+    test('environment pill wrappers stay transparent instead of doubling the tint', alpha(document.getElementById('environment-actions')) === 0 && [...document.getElementById('environment-pill').parentElement.parentElement.children].every(node => alpha(node) === 0));
+    test('home work composer paints rail and body without a second outer tint', alpha(document.getElementById('work-home-composer')) === 0 && Math.abs(alpha(document.getElementById('work-home-body')) - requestedAlpha) < 0.005 && Math.abs(alpha(document.getElementById('work-utility-rail')) - requestedAlpha) < 0.005);
+    test('attached utility rail children and outer wrapper add no second tint', alpha(document.getElementById('work-utility-wrapper')) === 0 && alpha(document.querySelector('#work-utility-rail [data-composer-utility-bar-scroll-area]')) === 0);
+    test('summary sticky header and its upper cap add no second tint', alpha(workHeader) === 0 && alpha(workHeader, '::before') === 0 && getComputedStyle(workHeader).backgroundImage === 'none' && getComputedStyle(workHeader, '::before').backgroundImage === 'none');
+    test('summary body stays transparent beneath native item states', alpha(document.getElementById('summary-body')) === 0);
+    test('dynamic isle uses one tint and clears its nested sticky header paint', Math.abs(alpha(dynamicSummary) - requestedAlpha) < 0.005 && alpha(document.getElementById('dynamic-summary-header')) === 0 && alpha(document.getElementById('dynamic-summary-header'), '::before') === 0);
+    test('floating utility rail without a native fill stays transparent', alpha(document.getElementById('floating-utility-rail')) === 0);
+    test('unstyled docked summary retains its native header and cap fills', alpha(document.getElementById('unstyled-summary')) === 0 && getComputedStyle(document.getElementById('unstyled-summary-header')).backgroundColor === workNative.unstyledHeaderBackground && getComputedStyle(document.getElementById('unstyled-summary-header'), '::before').backgroundColor === workNative.unstyledHeaderBefore);
+    test('work panels preserve native borders, radii and geometry', workPanels.every((node, index) => getComputedStyle(node).borderTopWidth === workNative.borders[index] && getComputedStyle(node).borderRadius === workNative.radii[index] && Math.abs(node.getBoundingClientRect().width - workNative.sizes[index].width) < 0.5 && Math.abs(node.getBoundingClientRect().height - workNative.sizes[index].height) < 0.5));
+    test('summary item states and thumbnail colors remain native', getComputedStyle(document.getElementById('summary-item')).backgroundColor === workNative.itemBackground && getComputedStyle(document.getElementById('summary-thumbnail')).backgroundColor === workNative.thumbnailBackground);
+    test('matching work surfaces inside dialogs and menus retain all native paint', workNative.protectedPaint.every(({id, background, shadow, before}) => {
+      const node = document.getElementById(id);
+      return getComputedStyle(node).backgroundColor === background && getComputedStyle(node).boxShadow === shadow && getComputedStyle(node, '::before').backgroundColor === before;
+    }));
+    workControls.forEach(node => node.click());
+    test('environment, project, computer and summary controls remain interactive', workControlClicks === 4 && workControls.every(node => getComputedStyle(node).pointerEvents === 'auto' && getComputedStyle(node).visibility === 'visible') && document.getElementById('summary-control').getAttribute('aria-expanded') === 'true');
+    api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: 0});
+    test('zero opacity clears all work panel fills including sticky header cap', [...workPanels, dynamicSummary].every(node => alpha(node) === 0) && alpha(workHeader) === 0 && alpha(workHeader, '::before') === 0);
+    api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: 1});
+    test('full opacity fills each work panel once without repainting nested headers', [...workPanels, dynamicSummary].every(node => alpha(node) === 1) && alpha(workHeader) === 0 && alpha(workHeader, '::before') === 0);
+    api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: requestedAlpha}); await wait();
+    const workSurfaceDiagnostic = {requestedAlpha, backgrounds: workPanels.map(node => ({id: node.id, color: getComputedStyle(node).backgroundColor})), summaryHeader: getComputedStyle(workHeader).backgroundColor, summaryHeaderCap: getComputedStyle(workHeader, '::before').backgroundColor};
     test('outer page-sidebar layout remains transparent', alpha(document.getElementById('root')) === 0);
     test('actual sidebar gets the requested tint once', Math.abs(alpha(document.getElementById('sidebar')) - requestedAlpha) < 0.005);
     const bottomGapDiagnostic = {nativeGap: nativeBottomGap, activeGap: bottomGap()};
@@ -560,8 +647,16 @@ final class Runner: NSObject, WKNavigationDelegate {
     documentEditor.blur();
     document.documentElement.className = 'light'; await wait();
     test('follows native light theme', api.status().mode === 'light');
+    test('light theme work panels use white at the requested opacity', [...workPanels, dynamicSummary].every(node => {
+      const channels = getComputedStyle(node).backgroundColor.match(/[\d.]+/g).map(Number);
+      return channels.slice(0, 3).every(value => value === 255) && Math.abs(alpha(node) - requestedAlpha) < 0.005;
+    }) && alpha(workHeader) === 0 && alpha(workHeader, '::before') === 0);
     document.documentElement.className = 'dark'; await wait();
     test('follows native dark theme', api.status().mode === 'dark');
+    test('dark theme work panels return to the dark tint at requested opacity', [...workPanels, dynamicSummary].every(node => {
+      const channels = getComputedStyle(node).backgroundColor.match(/[\d.]+/g).map(Number);
+      return channels.slice(0, 3).join(',') === '24,24,27' && Math.abs(alpha(node) - requestedAlpha) < 0.005;
+    }));
     const old = document.getElementById('main');
     const replacement = document.createElement('main');
     replacement.id = 'replacement'; replacement.innerHTML = '<p>New SPA route</p>';
@@ -643,6 +738,6 @@ final class Runner: NSObject, WKNavigationDelegate {
       document.getElementById('root').style.visibility = 'hidden';
       scrollTo(0, 0); await wait();
     }
-    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, bottomGapDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
+    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, bottomGapDiagnostic, workSurfaceDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
     """#
 }

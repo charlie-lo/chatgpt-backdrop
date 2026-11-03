@@ -21,6 +21,8 @@ The theme fixture models the installed app's relevant DOM and paint rules. It ch
 
 Generated result JSON, local process diagnostics, compiled test apps and scratch assets are intentionally excluded from Git. They are not needed to build or run the test suites.
 
+The 1.1.3 work-mode surface fix passed **133/133** isolated native WebKit checks. New cases cover the environment pill, attached project/device rail, styled summary and dynamic-isle variants, nested sticky heading fills, zero/full/intermediate opacity, light/dark mode, native controls, protected contexts, and exact restoration. Floating rails, unstyled summaries and item states retain their native paint. With the same fixture, 1.1.2 leaves all three filled roots at alpha 1 when the requested alpha is 0.1866; 1.1.3 applies the requested tint and clears the headings' duplicate fill. GIF snapshots still render all three frames before and after control changes.
+
 ## Native GUI requirements
 
 The theme harness creates its own visible accessory window so animation frames and real focus states can run. WebKit needs its normal macOS helper services. Some restricted shells block these services; run the script in an ordinary macOS terminal if WebKit cannot start.
