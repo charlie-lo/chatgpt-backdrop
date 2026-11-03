@@ -30,7 +30,7 @@ jobs:
     steps:
       # Always load trusted policy from main, including for fork/comment events.
       # Never download PR artifacts or execute code from a PR with this token.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: main
           persist-credentials: false
