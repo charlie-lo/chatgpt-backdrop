@@ -3,8 +3,6 @@ name: Codex Auto-merge
 on:
   issue_comment:
     types: [created, edited]
-  pull_request_review_thread:
-    types: [resolved, unresolved]
   workflow_run:
     workflows: [macOS CI]
     types: [completed]
