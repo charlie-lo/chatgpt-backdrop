@@ -7,9 +7,18 @@ zsh Tests/run.sh --offline  # URL and endpoint validation
 zsh Tests/run.sh            # Isolated CDP mock on 127.0.0.1
 zsh Tests/run-media.sh      # GIF preservation and static image decoding
 zsh Tests/run-theme.sh      # In-memory WebKit fixture and animation snapshots
+zsh Tests/run-windows.sh    # Offline multiwindow discovery, updates and cleanup
 ```
 
 These tests do not connect to, restart, or modify ChatGPT. The mock server uses a temporary local port; the scripts remove their temporary build output and fixtures.
+
+## Multiwindow controller tests
+
+`run-windows.sh` uses in-memory discovery and transport fakes, so it needs no network or GUI access. It covers existing and newly opened chat windows, settings propagation, preserving another window after the original closes, and best-effort cleanup of every window. Unchanged discovery does not evaluate a theme again; a new WebSocket session receives fresh reload-script registration rather than reusing a stale identifier.
+
+The multiwindow suite passed **117/117 checks**, including settings staged while all chat windows are closed and ensuring Restore cannot be undone by later discovery.
+
+The suite also checks temporary discovery failures, partial application failures, lost registration replies, restore after reconnect, explicit reset after a confirmed app restart, and strict exclusion of browser, utility, untrusted-origin and non-page targets. Apply and Restore share the same document guard so a target that navigates between discovery and cleanup is not styled as a chat window.
 
 ## Recorded release validation
 
