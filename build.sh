@@ -11,7 +11,7 @@ export CLANG_MODULE_CACHE_PATH="$BUILD/module-cache"
   -target arm64-apple-macosx14.0 \
   -module-cache-path "$BUILD/module-cache" \
   -framework SwiftUI -framework AppKit -framework Security -framework ImageIO \
-  "$ROOT/Sources/CDPClient.swift" "$ROOT/Sources/BackdropMedia.swift" "$ROOT/Sources/BackdropApp.swift" \
+  "$ROOT/Sources/CDPClient.swift" "$ROOT/Sources/BackdropWindows.swift" "$ROOT/Sources/BackdropMedia.swift" "$ROOT/Sources/BackdropApp.swift" \
   -o "$APP/Contents/MacOS/ChatGPTBackdrop"
 cp "$ROOT/Sources/theme.js" "$APP/Contents/Resources/theme.js"
 if [[ -f "$ROOT/Brand/Backdrop.icns" ]]; then

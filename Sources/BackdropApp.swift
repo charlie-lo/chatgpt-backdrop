@@ -103,17 +103,16 @@ enum OfficialApp {
     @Published var connected = false
     @Published var portText = ""
     @Published var showRestartConfirmation = false
-    private let client = CDPClient()
-    private var documentScript: String?
+    private let windows = BackdropWindows()
     private var debounce: Task<Void, Never>?
     private var monitor: Task<Void, Never>?
-    private var targetOrigin: String?
-    private var sessionPort: Int?
     private var recoveringApp = false
     private var actionTask: Task<Void, Never>?
     private var shuttingDown = false
     private var updateRequested = false
-    private var registrationUncertain = false
+
+    // Restore must also cancel the theme waiting for the next chat window.
+    var canRestore: Bool { connected || windows.hasDesiredTheme }
 
     init() {
         let sample = Self.sampleBackground()
@@ -157,7 +156,7 @@ enum OfficialApp {
 
     func changed() {
         debounce?.cancel()
-        guard applied && connected && !shuttingDown else { return }
+        guard windows.hasDesiredTheme && !shuttingDown else { return }
         updateRequested = true
         guard !busy else { return }
         debounce = Task { [weak self] in
@@ -167,7 +166,8 @@ enum OfficialApp {
                 self.run {
                     repeat {
                         self.updateRequested = false
-                        try await self.install()
+                        self.windows.updateDesiredSource(source: try self.source())
+                        await self.refreshWindows()
                     } while self.updateRequested && !self.shuttingDown
                 }
             } catch is CancellationError { }
@@ -187,7 +187,7 @@ enum OfficialApp {
             self.status = "Checking the ChatGPT installation…"
             let port = try OfficialApp.availablePort()
             try await OfficialApp.restart(port: port)
-            self.registrationUncertain = false
+            self.windows.resetAfterAppRestart()
             self.recoveringApp = true
             self.portText = String(port)
             self.status = "Waiting for ChatGPT to open…"
@@ -201,7 +201,7 @@ enum OfficialApp {
                     break
                 } catch {
                     lastError = error
-                    self.client.disconnect()
+                    self.windows.disconnect()
                     self.connected = false
                     try await Task.sleep(nanoseconds: 400_000_000)
                 }
@@ -229,20 +229,9 @@ enum OfficialApp {
         }
     }
 
-    private static func isShell(_ target: DebugTarget) -> Bool {
-        guard target.type == "page", let url = URLComponents(string: target.url) else { return false }
-        return url.scheme == "app" && url.host == "-" && url.path == "/index.html" && url.user == nil && url.password == nil
-    }
-
     private func connect(port: Int) async throws {
-        let targets = try await CDPClient.discover(port: port).filter(Self.isShell)
-        guard targets.count == 1, let target = targets.first else {
-            throw BackdropFailure.message(targets.isEmpty ? "No supported ChatGPT main window found. Embedded browser tabs are excluded." : "Multiple main windows found. Keep one ChatGPT main window open, then try again.")
-        }
-        try await client.connect(target: target, port: port)
-        targetOrigin = "app://-/index.html"
-        sessionPort = port
-        connected = true
+        try await windows.connect(port: port)
+        connected = windows.isConnected
         startMonitor()
     }
 
@@ -254,7 +243,7 @@ enum OfficialApp {
         let config = String(decoding: try encoder.encode(settings), as: UTF8.self)
         return """
         (() => {
-          if (self !== top || location.protocol !== 'app:' || location.hostname !== '-' || location.pathname !== '/index.html') return {active:false,unsupported:true};
+          \(BackdropWindows.documentGuard)
           \(engine)
           return globalThis.__chatGPTBackdrop.apply(\(config));
         })()
@@ -262,46 +251,34 @@ enum OfficialApp {
     }
 
     private func install() async throws {
-        guard connected && client.isConnected else { throw CDPError.disconnected }
-        let script = try source()
-        let result = try await client.command(method: "Runtime.evaluate", params: ["expression": script, "returnByValue": true, "awaitPromise": true, "allowUnsafeEvalBlockedByCSP": false])
-        guard let remote = result["result"] as? [String: Any], let value = remote["value"] as? [String: Any], value["active"] as? Bool == true else {
-            throw BackdropFailure.message("This window layout is not supported. No background was applied.")
+        guard windows.isConnected else { throw CDPError.disconnected }
+        defer {
+            connected = windows.isConnected
+            applied = windows.hasDesiredTheme && windows.appliedWindowCount > 0
         }
-        applied = true
-        // Register only for the verified main shell; the source itself also guards
-        // origin, path and top frame. Remove the previous registration first.
-        if let previous = documentScript {
-            _ = try await client.command(method: "Page.removeScriptToEvaluateOnNewDocument", params: ["identifier": previous])
-            documentScript = nil
-        }
-        do {
-            let registration = try await client.command(method: "Page.addScriptToEvaluateOnNewDocument", params: ["source": script])
-            guard let identifier = registration["identifier"] as? String else { throw CDPError.malformedResponse }
-            documentScript = identifier
-        } catch {
-            // A command can execute before its reply is lost. Never claim that
-            // removing visible styles also removed an unacknowledged script.
-            registrationUncertain = true
-            throw error
-        }
-        applied = true
-        status = "Background applied · Changes update live"
+        try await windows.apply(source: source())
+        status = appliedStatus
+    }
+
+    private var appliedStatus: String {
+        let count = windows.appliedWindowCount
+        return "Background applied to \(count) \(count == 1 ? "window" : "windows") · Changes update live"
     }
 
     func restore() {
         debounce?.cancel()
         updateRequested = false
         run {
-            if let identifier = self.documentScript {
-                _ = try await self.client.command(method: "Page.removeScriptToEvaluateOnNewDocument", params: ["identifier": identifier])
-                self.documentScript = nil
+            defer {
+                self.applied = false
+                self.connected = self.windows.isConnected
             }
-            _ = try await self.client.command(method: "Runtime.evaluate", params: ["expression": "globalThis.__chatGPTBackdrop?.restore()", "returnByValue": true, "allowUnsafeEvalBlockedByCSP": false])
-            self.applied = false
-            self.status = "Original appearance restored"
-            if self.registrationUncertain {
-                self.error = "The visible background was removed, but a reload setting could not be confirmed. Quit and reopen ChatGPT to finish cleanup."
+            await self.windows.restore()
+            if self.windows.cleanupUncertain {
+                self.status = "Some windows could not be fully restored"
+                self.error = "Cleanup could not be confirmed for every ChatGPT window. Quit and reopen ChatGPT to finish cleanup."
+            } else {
+                self.status = "Original appearance restored"
             }
         }
     }
@@ -314,7 +291,7 @@ enum OfficialApp {
             defer {
                 busy = false
                 actionTask = nil
-                if updateRequested && applied && connected && !shuttingDown { changed() }
+                if updateRequested && windows.hasDesiredTheme && !shuttingDown { changed() }
             }
             do { try await action() } catch { updateRequested = false; handle(error) }
         }
@@ -322,10 +299,8 @@ enum OfficialApp {
 
     private func handle(_ failure: Error) {
         error = failure.localizedDescription
-        if !client.isConnected {
-            registrationUncertain = registrationUncertain || applied || documentScript != nil
-            connected = false; applied = false; documentScript = nil
-        }
+        connected = windows.isConnected
+        applied = windows.hasDesiredTheme && windows.appliedWindowCount > 0
         status = recoveringApp ? "Connection incomplete. Quit and reopen ChatGPT normally." : "Could not complete. See the details."
         recoveringApp = false
     }
@@ -337,14 +312,32 @@ enum OfficialApp {
             while !Task.isCancelled {
                 do { try await Task.sleep(nanoseconds: 2_000_000_000) } catch { return }
                 guard let self = self else { return }
-                if !self.client.isConnected {
-                    self.registrationUncertain = self.registrationUncertain || self.applied || self.documentScript != nil
-                    self.connected = false; self.applied = false; self.documentScript = nil
-                    self.status = "Disconnected. Apply again to restore your background."
-                    return
+                guard !self.busy && !self.shuttingDown else { continue }
+                // Reuse the same serialized action queue as Apply/Restore/Quit.
+                // Only new windows receive an unchanged theme during polling.
+                self.run {
+                    await self.refreshWindows()
                 }
             }
         }
+    }
+
+    private func refreshWindows() async {
+        var refreshFailed = false
+        do { try await windows.reconcile() } catch { refreshFailed = true }
+        let nextConnected = windows.isConnected
+        let nextApplied = windows.hasDesiredTheme && windows.appliedWindowCount > 0
+        if connected != nextConnected { connected = nextConnected }
+        if applied != nextApplied { applied = nextApplied }
+        let nextStatus: String?
+        if refreshFailed {
+            nextStatus = "Could not update every ChatGPT window. Apply again to retry."
+        } else if !nextConnected {
+            nextStatus = "No ChatGPT chat windows connected. Waiting for a window…"
+        } else if nextApplied {
+            nextStatus = appliedStatus
+        } else { nextStatus = nil }
+        if let nextStatus = nextStatus, status != nextStatus { status = nextStatus }
     }
 
     func exportTheme() {
@@ -381,13 +374,8 @@ enum OfficialApp {
         shuttingDown = true
         debounce?.cancel(); monitor?.cancel()
         await actionTask?.value
-        var cleanupFailed = registrationUncertain
-        if connected && client.isConnected {
-            do {
-                if let identifier = documentScript { _ = try await client.command(method: "Page.removeScriptToEvaluateOnNewDocument", params: ["identifier": identifier]); documentScript = nil }
-                _ = try await client.command(method: "Runtime.evaluate", params: ["expression": "globalThis.__chatGPTBackdrop?.restore()", "returnByValue": true, "allowUnsafeEvalBlockedByCSP": false])
-            } catch { cleanupFailed = true }
-        }
+        await windows.restore()
+        let cleanupFailed = windows.cleanupUncertain
         if cleanupFailed {
             let alert = NSAlert()
             alert.messageText = "Cleanup incomplete"
@@ -395,7 +383,7 @@ enum OfficialApp {
             alert.addButton(withTitle: "Got It, Quit")
             alert.runModal()
         }
-        client.disconnect()
+        windows.disconnect()
     }
 }
 
@@ -498,7 +486,7 @@ struct BackdropView: View {
                         .font(.system(size: 10)).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Restore Original", action: model.restore).disabled(!model.connected || model.busy)
+                Button("Restore Original", action: model.restore).disabled(!model.canRestore || model.busy)
                 Button(action: model.applyPressed) { Text(model.busy ? "Working…" : "Apply Background").font(.system(size: 12, weight: .semibold)).padding(.horizontal, 22).padding(.vertical, 10).foregroundStyle(Color(red: 0.03, green: 0.10, blue: 0.10)).background(accent.opacity(model.busy ? 0.5 : 1), in: RoundedRectangle(cornerRadius: 10)) }
                     .buttonStyle(.plain).disabled(model.busy)
             }
