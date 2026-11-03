@@ -6,6 +6,10 @@ An original, unofficial Mac utility for image backgrounds in the ChatGPT desktop
 
 Choose a local image, adjust its shade, blur, panel opacity and position, then restore the original appearance whenever you want.
 
+## Version 1.1.4 — Dots backgrounds
+
+Custom backgrounds now show through the Dots page's nested messaging layout. Its footer backing and decorative fades become transparent while message bubbles, attachments, reactions and composer controls retain their native styling. Restore Original removes these overrides.
+
 ## Version 1.1.0 — animated GIFs and a new identity
 
 - Choose a GIF as a background and play it in the native preview.
