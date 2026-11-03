@@ -22,6 +22,10 @@ Panel Opacity 的半透明遮罩會向上延伸到左側標題列，包含導覽
 
 移除原生頁面外框的底部留白，讓 Panel Opacity 延伸至視窗底部；側欄收合成導覽列時也適用。保留原生頂部位置、右側留白、內層底部控制項間距與圓角。
 
+## 1.1.3 工作模式面板透明度
+
+Panel Opacity 現在也會控制 Edit environment 按鈕、Choose project / This computer 工具列，以及 Outputs / Subagents / Sources 摘要卡片。摘要標題不再重複疊加不透明底色。浮動工具列、原本未填色的摘要、項目懸停狀態、對話框和選單保留原本樣式。
+
 ## 1.0.2 修正
 
 - 清除側邊欄向右延伸 20 CSS px 的原生裝飾底色，修正殘留的垂直深色帶。

@@ -24,6 +24,10 @@ Panel Opacity now extends above the left sidebar into the native titlebar. The t
 
 Removes the native page frame's bottom gutter so Panel Opacity reaches the window bottom, including when the sidebar is collapsed to its navigation rail. The native top offset, right inset, inner footer spacing and corner radii are preserved.
 
+## Version 1.1.3 — work-mode panel opacity
+
+Panel Opacity now also controls the Edit environment pill, the Choose project / This computer bar, and the Outputs / Subagents / Sources summary card. Summary headings no longer add an opaque layer over the card. Floating rails, unstyled summaries, item hover states, dialogs and menus keep their native styling.
+
 ## Version 1.0.2 — remaining sidebar edge
 
 - Clears the native inherited-background extension beyond the sidebar's right edge, which was exposed as a 20 CSS-pixel dark band.
