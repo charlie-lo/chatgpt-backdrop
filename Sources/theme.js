@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.1.1";
+  const VERSION = "1.1.2";
   const GLOBAL = "__chatGPTBackdrop";
   const ROOT_ATTRIBUTE = "data-chatgpt-backdrop";
   const SURFACE_ATTRIBUTE = "data-chatgpt-backdrop-surface";
@@ -193,6 +193,12 @@ ${root} body { background-color: transparent !important; isolation: isolate; }
 ${root} [${SURFACE_ATTRIBUTE}="${owner}"] {
   background-color: transparent !important;
   background-image: none !important;
+}
+/* Native PageSurfaceLayout reserves a spacing unit below its flex workspace.
+   Remove that outer gutter so the panel's own tint reaches the window bottom.
+   Keep this independent of page-sidebar, which changes during sidebar collapse. */
+${root} [data-app-shell-frame][data-app-shell-page-surface="true"]${outsideProtected} {
+  padding-block-end: 0 !important;
 }
 /* page-sidebar labels the whole page, not the sidebar. Paint exactly one
    physical sidebar; nested navigation and floating headers stay transparent. */

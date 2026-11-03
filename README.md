@@ -20,6 +20,10 @@ Open the new app to use GIF selection and animated preview. If an earlier Backdr
 
 Panel Opacity now extends above the left sidebar into the native titlebar. The tint includes the navigation rail, follows sidebar resizing and uses the native titlebar height. It does not intercept button clicks or dragging. Existing GIF support and sidebar edge fixes are retained.
 
+## Version 1.1.2 — bottom-edge coverage
+
+Removes the native page frame's bottom gutter so Panel Opacity reaches the window bottom, including when the sidebar is collapsed to its navigation rail. The native top offset, right inset, inner footer spacing and corner radii are preserved.
+
 ## Version 1.0.2 — remaining sidebar edge
 
 - Clears the native inherited-background extension beyond the sidebar's right edge, which was exposed as a 20 CSS-pixel dark band.

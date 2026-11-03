@@ -131,6 +131,13 @@ final class Runner: NSObject, WKNavigationDelegate {
         #navigation-rail{flex:0 0 52px;width:52px;pointer-events:auto}
         #sidebar-content{flex:1;min-width:0}
         #peeking-sidebar{position:absolute;left:0;top:420px;width:90px;height:80px}
+        /* Native PageSurfaceLayout reserves one spacing unit below its flex row. */
+        .bottom-layout-fixture{position:fixed;right:0;bottom:0;display:flex;flex-direction:column;box-sizing:border-box;width:320px;height:180px;--spacing:4px;--app-shell-titlebar-height:44px;padding-block-end:var(--spacing);padding-inline-end:var(--spacing)}
+        #bottom-workspace{position:relative;display:flex;flex:1;min-height:0;max-height:100%;width:100%}
+        #bottom-sidebar{display:flex;flex-direction:column;flex-shrink:0;height:auto;margin-top:var(--app-shell-titlebar-height)}
+        #bottom-navigation{display:flex;flex-direction:column;flex:1;box-sizing:border-box;padding-bottom:4px}
+        #bottom-control{margin-top:auto;height:24px}
+        #bottom-main{flex:1;margin-top:var(--app-shell-titlebar-height);border-radius:12px}
         </style>
         <script>
         \(engine)
@@ -138,6 +145,7 @@ final class Runner: NSObject, WKNavigationDelegate {
         window.fixtureGIF87 = 'data:image/gif;base64,\(Self.animatedGIFBase64)';
         window.fixtureGIF = 'data:image/gif;base64,' + btoa('GIF89a' + atob('\(Self.animatedGIFBase64)').slice(6));
         window.titlebarControlClicks = 0;
+        window.bottomControlClicks = 0;
         window.beforeDOM = __chatGPTBackdrop.apply({imageData: fixtureImage});
         </script></head><body>
         <div id="root" data-app-shell-page-sidebar="true" data-app-shell-page-surface="true" data-app-shell-frame>
@@ -162,6 +170,7 @@ final class Runner: NSObject, WKNavigationDelegate {
             </div>
             <section id="home-composer" class="_ComposerLayoutRoot_fixture" data-composer-surface-variant="default" data-composer-utility-bar-variant="home"><div id="home-composer-body" class="_ComposerLayoutBody_fixture" data-composer-body>Home composer body</div></section>
           </main>
+          <section id="bottom-layout" class="bottom-layout-fixture" data-app-shell-frame data-app-shell-page-surface="true" data-app-shell-page-sidebar="true"><div id="bottom-workspace" data-app-shell-workspace-row><aside id="bottom-sidebar" class="app-shell-left-panel" data-app-shell-left-panel-appearance="translucent"><nav id="bottom-navigation"><button id="bottom-control" type="button" onclick="bottomControlClicks++">Bottom control</button></nav></aside><div id="bottom-main" data-app-shell-main-surface="default">Main pane</div></div></section>
         </div>
         </body></html>
         """
@@ -315,6 +324,17 @@ final class Runner: NSObject, WKNavigationDelegate {
     const nativeSidebarDocumentTop = nativeSidebarRect.top + scrollY;
     const nativeFrame = document.getElementById('root');
     const nativeFrameStyle = nativeFrame.getAttribute('style');
+    const bottomFrame = document.getElementById('bottom-layout');
+    const bottomSidebar = document.getElementById('bottom-sidebar');
+    const bottomMain = document.getElementById('bottom-main');
+    const bottomControl = document.getElementById('bottom-control');
+    const bottomFrameStyle = bottomFrame.getAttribute('style');
+    const bottomSidebarStyle = bottomSidebar.getAttribute('style');
+    const nativeBottomGap = bottomFrame.getBoundingClientRect().bottom - bottomSidebar.getBoundingClientRect().bottom;
+    const nativeBottomTop = bottomSidebar.getBoundingClientRect().top;
+    const nativeBottomInlineInset = getComputedStyle(bottomFrame).paddingInlineEnd;
+    const nativeBottomRadius = getComputedStyle(bottomMain).borderRadius;
+    const bottomGap = () => bottomFrame.getBoundingClientRect().bottom - bottomSidebar.getBoundingClientRect().bottom;
     const titlebar = document.getElementById('titlebar');
     const titlebarControl = document.getElementById('titlebar-control');
     const titlebarControlRect = titlebarControl.getBoundingClientRect();
@@ -376,6 +396,32 @@ final class Runner: NSObject, WKNavigationDelegate {
     api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: requestedAlpha}); await wait();
     test('outer page-sidebar layout remains transparent', alpha(document.getElementById('root')) === 0);
     test('actual sidebar gets the requested tint once', Math.abs(alpha(document.getElementById('sidebar')) - requestedAlpha) < 0.005);
+    const bottomGapDiagnostic = {nativeGap: nativeBottomGap, activeGap: bottomGap()};
+    test('bottom fixture reproduces the native four pixel inset before applying', Math.abs(nativeBottomGap - 4) < 0.5);
+    test('panel tint reaches the bottom of the page frame', Math.abs(bottomGap()) < 0.5 && Math.abs(alpha(bottomSidebar) - requestedAlpha) < 0.005);
+    test('main pane also reaches the bottom without the native gutter', Math.abs(bottomFrame.getBoundingClientRect().bottom - bottomMain.getBoundingClientRect().bottom) < 0.5);
+    test('bottom fix preserves the native top offset, inline inset and corner radius', Math.abs(bottomSidebar.getBoundingClientRect().top - nativeBottomTop) < 0.5 && getComputedStyle(bottomFrame).paddingInlineEnd === nativeBottomInlineInset && getComputedStyle(bottomMain).borderRadius === nativeBottomRadius);
+    const bottomBox = bottomSidebar.getBoundingClientRect();
+    const bottomHit = document.elementFromPoint(bottomBox.left + bottomBox.width / 2, bottomFrame.getBoundingClientRect().bottom - 0.5);
+    test('last pixel of the page frame belongs to the panel or its controls', bottomHit === bottomSidebar || bottomSidebar.contains(bottomHit));
+    bottomControl.click();
+    test('bottom control retains its interaction and inner footer padding', bottomControlClicks === 1 && getComputedStyle(bottomControl).pointerEvents === 'auto' && Math.abs(bottomSidebar.getBoundingClientRect().bottom - bottomControl.getBoundingClientRect().bottom - 4) < 0.5);
+    bottomFrame.style.height = '220px'; bottomFrame.style.width = '400px'; bottomSidebar.style.width = '180px';
+    bottomFrame.style.setProperty('--spacing', '8px'); await wait();
+    bottomGapDiagnostic.resizedGap = bottomGap();
+    test('bottom coverage survives window, sidebar and spacing changes', Math.abs(bottomGap()) < 0.5 && Math.abs(bottomSidebar.getBoundingClientRect().width - 180) < 0.5 && getComputedStyle(bottomFrame).paddingInlineEnd === '8px');
+    bottomFrame.setAttribute('data-app-shell-page-sidebar', 'false'); bottomSidebar.style.width = '52px'; await wait();
+    test('rail-only collapsed sidebar still reaches the bottom', Math.abs(bottomGap()) < 0.5 && Math.abs(bottomSidebar.getBoundingClientRect().width - 52) < 0.5);
+    bottomFrame.setAttribute('data-app-shell-page-sidebar', 'true');
+    bottomFrame.setAttribute('data-app-shell-page-surface', 'false'); await wait();
+    test('non-page layout retains its native bottom padding', Math.abs(bottomGap() - 8) < 0.5);
+    bottomFrame.setAttribute('data-app-shell-page-surface', 'true');
+    bottomFrame.setAttribute('role', 'dialog'); await wait();
+    test('protected dialog layout retains its native bottom padding', Math.abs(bottomGap() - 8) < 0.5);
+    bottomFrame.removeAttribute('role');
+    if (bottomFrameStyle === null) bottomFrame.removeAttribute('style'); else bottomFrame.setAttribute('style', bottomFrameStyle);
+    if (bottomSidebarStyle === null) bottomSidebar.removeAttribute('style'); else bottomSidebar.setAttribute('style', bottomSidebarStyle);
+    await wait();
     const capStyle = () => getComputedStyle(nativeSidebar, '::before');
     const capRect = () => {
       const box = nativeSidebar.getBoundingClientRect();
@@ -427,8 +473,10 @@ final class Runner: NSObject, WKNavigationDelegate {
     test('peeking sidebar does not receive an upward titlebar cap', ['none', 'normal'].includes(getComputedStyle(document.getElementById('peeking-sidebar'), '::before').content));
     api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: 0});
     test('zero panel opacity clears both sidebar and titlebar cap', alpha(nativeSidebar) === 0 && alpha(nativeSidebar, '::before') === 0);
+    test('zero panel opacity remains transparent through the bottom edge', alpha(bottomSidebar) === 0 && Math.abs(bottomGap()) < 0.5);
     api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: 1});
     test('full panel opacity applies equally to sidebar and titlebar cap', alpha(nativeSidebar) === 1 && alpha(nativeSidebar, '::before') === 1);
+    test('full panel opacity covers the bottom edge without another paint layer', alpha(bottomSidebar) === 1 && Math.abs(bottomGap()) < 0.5);
     api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: requestedAlpha}); await wait();
     test('native sidebar extension reproduces a 20 CSS pixel band', getComputedStyle(nativeSidebar, '::after').width === '20px');
     test('native sidebar extension no longer inherits panel tint', alpha(nativeSidebar, '::after') === 0);
@@ -527,6 +575,8 @@ final class Runner: NSObject, WKNavigationDelegate {
     // Reset their exact original attribute state before testing engine cleanup.
     if (nativeSidebarStyle === null) nativeSidebar.removeAttribute('style'); else nativeSidebar.setAttribute('style', nativeSidebarStyle);
     if (nativeFrameStyle === null) nativeFrame.removeAttribute('style'); else nativeFrame.setAttribute('style', nativeFrameStyle);
+    if (bottomFrameStyle === null) bottomFrame.removeAttribute('style'); else bottomFrame.setAttribute('style', bottomFrameStyle);
+    if (bottomSidebarStyle === null) bottomSidebar.removeAttribute('style'); else bottomSidebar.setAttribute('style', bottomSidebarStyle);
     api.restore();
     const restoredHTML = document.documentElement.outerHTML;
     let restoreDifferenceIndex = 0;
@@ -593,6 +643,6 @@ final class Runner: NSObject, WKNavigationDelegate {
       document.getElementById('root').style.visibility = 'hidden';
       scrollTo(0, 0); await wait();
     }
-    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
+    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, bottomGapDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
     """#
 }
