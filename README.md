@@ -6,6 +6,14 @@ An original, unofficial Mac utility for image backgrounds in the ChatGPT desktop
 
 Choose a local image, adjust its shade, blur, panel opacity and position, then restore the original appearance whenever you want.
 
+## Version 1.1.5 — combined panel coverage
+
+Combines bottom-edge and Work-mode panel opacity fixes with Dots backgrounds and multiwindow support. The updated styling engine replaces earlier loaded versions when applying a background.
+
+## Version 1.1.4 — Dots backgrounds
+
+Custom backgrounds now show through the Dots page's nested messaging layout. Its footer backing and decorative fades become transparent while message bubbles, attachments, reactions and composer controls retain their native styling. Restore Original removes these overrides.
+
 ## Version 1.1.0 — animated GIFs and a new identity
 
 - Choose a GIF as a background and play it in the native preview.
@@ -59,13 +67,17 @@ zsh build.sh
 
 Static images are resized locally. GIFs keep their original animation data; GIF files up to 14 MB are supported within the displayed canvas/frame limits. The tool does not upload files, extract conversation text, or install an automatic startup service. Theme files contain the image itself, so choose where to store or share them.
 
+Chats opened with **Open in New Window** receive the current background automatically, normally within two seconds. Already-open chat windows are included when you connect. Changes and **Restore Original** apply to all managed chat windows; closing the original window does not stop the remaining windows from receiving updates. Backdrop polls for new windows without reapplying an unchanged background, so normal discovery does not restart a GIF.
+
+Rebuild and open the updated Backdrop app to enable multiwindow support. Before quitting an older Backdrop version, save its theme and note its **Local Port**. Use **Connect** with that port and import the theme in the new build to reuse the current ChatGPT session without restarting ChatGPT.
+
 The folder includes `Twilight Hills.png` and a ready-to-import `Twilight Hills.chatgpt-background.json` sample.
 
 ## Compatibility and behavior
 
 - The build targets **Apple Silicon Macs running macOS 14 or later**.
 - Designed for `/Applications/ChatGPT.app`, bundle ID `com.openai.codex`, using the interface structure of local build `26.1023.51421`.
-- Targets only the main window at `app://-/index.html`. It does not inject into embedded browsers, other websites, or login pages.
+- Targets primary chat windows at `app://-/index.html`, including **Open in New Window** chats. It excludes embedded browsers, other origins, the separate `detached-window.html` browser shell, and avatar, dictation, Spotlight and hotkey utility windows. Injection and restoration retain the same application-origin and top-frame guards.
 - Does not modify ChatGPT's installed files, login information, or system protections.
 - Keep Backdrop open while using the background. When ChatGPT exits, the injection ends; import your saved theme and apply it again next time.
 - Restoring the appearance does not close the debugging port. Quit ChatGPT and reopen it normally to disable that local connection.
@@ -87,6 +99,7 @@ Local builds are ad hoc signed and are not Apple-notarized. Source code is in `S
 zsh Tests/run.sh          # Test-only CDP server on 127.0.0.1
 zsh Tests/run-theme.sh    # Isolated, in-memory WebKit page
 zsh Tests/run-media.sh    # GIF preservation and static image decoding
+zsh Tests/run-windows.sh  # Offline multiwindow discovery, updates and cleanup
 ```
 
 Tests never connect to, restart, or modify ChatGPT. See [test details and results](Tests/README.md).
