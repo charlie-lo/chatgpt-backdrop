@@ -151,12 +151,22 @@ async function processPullRequest({ github, core, owner, repo, number, baseBranc
   // guards the expected head SHA and still enforces repository merge rules.
   const { data: finalPull } = await github.rest.pulls.get({ owner, repo, pull_number: number });
   if (!eligiblePullRequest(finalPull, repositoryFullName, baseBranch) || finalPull.head.sha !== headSha ||
-      finalPull.base.sha !== fresh.base.sha || finalPull.mergeable !== true || finalPull.mergeable_state !== 'clean') {
-    await status('pending', 'PR changed or is not cleanly mergeable; waiting for another check');
-    return { state: 'pending', reason: 'PR changed or is not cleanly mergeable' };
+      finalPull.base.sha !== fresh.base.sha || finalPull.mergeable === false) {
+    await status('pending', 'PR changed or has merge conflicts; waiting for another check');
+    return { state: 'pending', reason: 'PR changed or has merge conflicts' };
   }
-  const { data: merged } = await github.rest.pulls.merge({ owner, repo, pull_number: number,
-    sha: headSha, merge_method: 'squash' });
+  // mergeable_state includes asynchronously cached required-check results. A
+  // cached "blocked" immediately after our success must not reset our own gate.
+  if (finalPull.mergeable !== true) return { ...result, waitingForMergeability: true };
+  let merged;
+  try {
+    ({ data: merged } = await github.rest.pulls.merge({ owner, repo, pull_number: number,
+      sha: headSha, merge_method: 'squash' }));
+  } catch (error) {
+    if (error.status !== 405) throw error;
+    core.info(`PR #${number}: merge rules are not ready; preserving the verified gate success`);
+    return { ...result, waitingForMergeRules: true };
+  }
   if (!merged.merged) throw new Error(`GitHub declined merging PR #${number}: ${merged.message || 'unknown reason'}`);
   return { ...result, merged: true };
 }

@@ -90,10 +90,11 @@ test('all thread pages are inspected, including an unresolved thread on page two
 });
 
 function harness({ fresh = pull(), comments = [comment()], threads = [], commentError = false,
-  runs = [workflowRun()], checkRuns = checks(), finalPull } = {}) {
+  runs = [workflowRun()], checkRuns = checks(), finalPull, mergeError } = {}) {
   const statuses = [], mutations = []; let gets = 0;
   const github = { rest: { pulls: { get: async () => ({ data: ++gets === 1 ? pull() : gets === 2 ? fresh : (finalPull || fresh) }),
-    merge: async variables => { mutations.push({ variables }); return { data: { merged: true } }; } },
+    merge: async variables => { mutations.push({ variables }); if (mergeError) throw mergeError;
+      return { data: { merged: true } }; } },
     issues: { listComments: 'listComments' }, actions: { listWorkflowRuns: 'listWorkflowRuns' },
     checks: { listForRef: 'listForRef' }, repos: { createCommitStatus: async value => statuses.push(value) } },
     paginate: async endpoint => { if (commentError) throw new Error('API unavailable');
@@ -196,4 +197,22 @@ test('a failed PR evaluation does not prevent checking the remaining PRs', async
   assert.equal(results[1].merged, true);
   assert.ok(evaluated.includes(7));
   assert.equal(failures.length, 1);
+});
+test('cached blocked mergeable_state does not reset a verified gate or prevent API-enforced merge', async () => {
+  const h = harness({ finalPull: pull({ mergeable: true, mergeable_state: 'blocked' }) });
+  assert.equal((await process(h)).merged, true);
+  assert.deepEqual(h.statuses.map(s => s.state), ['pending', 'success']);
+});
+test('merge API 405 preserves gate success so cached rules can settle before the next run', async () => {
+  const h = harness({ mergeError: Object.assign(new Error('Required status check is expected'), { status: 405 }) });
+  const result = await process(h);
+  assert.equal(result.waitingForMergeRules, true);
+  assert.equal(result.merged, undefined);
+  assert.deepEqual(h.statuses.map(s => s.state), ['pending', 'success']);
+});
+test('unknown mergeability preserves verified success and waits without attempting merge', async () => {
+  const h = harness({ finalPull: pull({ mergeable: null, mergeable_state: 'unknown' }) });
+  assert.equal((await process(h)).waitingForMergeability, true);
+  assert.equal(h.mutations.length, 0);
+  assert.deepEqual(h.statuses.map(s => s.state), ['pending', 'success']);
 });
