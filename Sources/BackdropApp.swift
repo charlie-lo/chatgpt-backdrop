@@ -111,6 +111,9 @@ enum OfficialApp {
     private var shuttingDown = false
     private var updateRequested = false
 
+    // Restore must also cancel the theme waiting for the next chat window.
+    var canRestore: Bool { connected || windows.hasDesiredTheme }
+
     init() {
         let sample = Self.sampleBackground()
         image = NSImage(data: sample)!
@@ -483,7 +486,7 @@ struct BackdropView: View {
                         .font(.system(size: 10)).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Restore Original", action: model.restore).disabled(!model.connected || model.busy)
+                Button("Restore Original", action: model.restore).disabled(!model.canRestore || model.busy)
                 Button(action: model.applyPressed) { Text(model.busy ? "Working…" : "Apply Background").font(.system(size: 12, weight: .semibold)).padding(.horizontal, 22).padding(.vertical, 10).foregroundStyle(Color(red: 0.03, green: 0.10, blue: 0.10)).background(accent.opacity(model.busy ? 0.5 : 1), in: RoundedRectangle(cornerRadius: 10)) }
                     .buttonStyle(.plain).disabled(model.busy)
             }
