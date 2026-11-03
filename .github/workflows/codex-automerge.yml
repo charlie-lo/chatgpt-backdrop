@@ -1,0 +1,44 @@
+name: Codex Auto-merge
+
+on:
+  issue_comment:
+    types: [created, edited]
+  pull_request_review_thread:
+    types: [resolved, unresolved]
+  workflow_run:
+    workflows: [macOS CI]
+    types: [completed]
+  schedule:
+    - cron: '17,47 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  statuses: write
+  checks: read
+  actions: read
+
+# Serialize decisions so two PRs cannot be merged against the same old base.
+concurrency:
+  group: codex-automerge
+  cancel-in-progress: false
+
+jobs:
+  review-and-merge:
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # Always load trusted policy from main, including for fork/comment events.
+      # Never download PR artifacts or execute code from a PR with this token.
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Merge only the reviewed and tested commit
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const gate = require('./.github/scripts/codex-gate.cjs');
+            await gate.run({ github, context, core, mergeMode: 'direct' });

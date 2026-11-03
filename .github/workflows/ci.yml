@@ -18,6 +18,17 @@ concurrency:
 # the arm64 build on macOS 15; macOS 14 compatibility still needs separate
 # verification. Keep check names stable after adding them to a ruleset.
 jobs:
+  automation-tests:
+    name: Automation Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Test review and automatic merge policy
+        run: node --test .github/scripts/codex-gate.test.cjs
+
   build:
     name: Build macOS App
     runs-on: macos-15
