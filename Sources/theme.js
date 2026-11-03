@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.1.1";
+  const VERSION = "1.1.4";
   const GLOBAL = "__chatGPTBackdrop";
   const ROOT_ATTRIBUTE = "data-chatgpt-backdrop";
   const SURFACE_ATTRIBUTE = "data-chatgpt-backdrop-surface";
@@ -41,6 +41,10 @@
     'aside.app-shell-left-panel [data-app-shell-left-panel-appearance]',
     'aside.app-shell-left-panel .sidebar-navigation',
     "[data-app-shell-titlebar]",
+    // Dots nests an embedded messaging view inside its own embedded shell.
+    // Both roots and their direct panes have independent native solid fills.
+    ".messaging-root.messaging-embedded",
+    ".messaging-root.messaging-embedded > .thread-pane",
     '[data-thread-scroll-footer="true"]',
     'form[data-chatgpt-composer]',
     "main",
@@ -172,7 +176,8 @@
   function updateOwnedStyles() {
     if (!config || !layer || !stylesheet) return;
     const root = `html[${ROOT_ATTRIBUTE}="${owner}"]:not([${MUTED_ATTRIBUTE}="${owner}"])`;
-    const outsideProtected = ":not(:is(dialog,dialog *,[role=dialog],[role=dialog] *,[role=alertdialog],[role=alertdialog] *,[role=menu],[role=menu] *,[role=listbox],[role=listbox] *,pre,pre *,code,code *))";
+    const outsideProtected = ":not(:is(dialog,dialog *,[role=dialog],[role=dialog] *,[role=alertdialog],[role=alertdialog] *,[role=menu],[role=menu] *,[role=listbox],[role=listbox] *,pre,pre *,code,code *,[data-testid=settings-modal],[data-testid=settings-modal] *,[data-settings-page],[data-settings-page] *))";
+    const dotsFooter = `.messaging-root.messaging-embedded[${SURFACE_ATTRIBUTE}="${owner}"] .conversation-footer`;
     const composer = '[class*="_ComposerLayoutRoot_"]:is([data-composer-surface-variant="default"],[data-composer-surface-variant="opaque"],[data-composer-surface-variant="secondary"])';
     const decorativeBackground = 'div[aria-hidden="true"][class*="_background_"]:is([class*="_surface_"],[class*="_fade_"],[class*="_combined_"]):empty';
     const panel = mode === "light" ? "255,255,255" : "24,24,27";
@@ -234,7 +239,8 @@ ${root} [data-app-shell-page-sidebar="true"] [class*="_MainContentLeftBorder_"]$
 ${root} [data-app-shell-main-content-top-fade] div[aria-hidden="true"][class*="_MainContentTopFade_"]:empty${outsideProtected},
 ${root} .thread-scroll-container ${decorativeBackground}${outsideProtected},
 ${root} [data-thread-footer-background] ${decorativeBackground}${outsideProtected},
-${root} [data-thread-scroll-footer="true"] ${decorativeBackground}${outsideProtected} {
+${root} [data-thread-scroll-footer="true"] ${decorativeBackground}${outsideProtected},
+${root} ${dotsFooter} ${decorativeBackground}${outsideProtected} {
   background: transparent !important;
   background-image: none !important;
   box-shadow: none !important;
@@ -244,6 +250,16 @@ ${root} [data-thread-scroll-footer="true"] ${decorativeBackground}${outsideProte
 }
 ${root} [data-thread-scroll-footer="true"]${outsideProtected} {
   background-color: transparent !important;
+}
+/* Dots has a separate messaging footer. Clear only its page-colored backing;
+   retain the composer, bubbles, attachments, and the shared color tokens. */
+${root} ${dotsFooter} .composer-disclaimer${outsideProtected},
+${root} ${dotsFooter} .typing-indicator:not(:empty)${outsideProtected} {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+${root} ${dotsFooter} .composer-wrap:not([data-has-composer-surface])${outsideProtected} {
+  border-bottom-color: transparent !important;
 }
 /* The page card's native shadow is a separate empty overlay beside the sidebar. */
 ${root} [data-app-shell-frame] div[aria-hidden="true"][class*="_PageSurface_"]:empty${outsideProtected} {
