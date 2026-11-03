@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.1.4";
+  const VERSION = "1.1.5";
   const GLOBAL = "__chatGPTBackdrop";
   const ROOT_ATTRIBUTE = "data-chatgpt-backdrop";
   const SURFACE_ATTRIBUTE = "data-chatgpt-backdrop-surface";
@@ -179,6 +179,9 @@
     const outsideProtected = ":not(:is(dialog,dialog *,[role=dialog],[role=dialog] *,[role=alertdialog],[role=alertdialog] *,[role=menu],[role=menu] *,[role=listbox],[role=listbox] *,pre,pre *,code,code *,[data-testid=settings-modal],[data-testid=settings-modal] *,[data-settings-page],[data-settings-page] *))";
     const dotsFooter = `.messaging-root.messaging-embedded[${SURFACE_ATTRIBUTE}="${owner}"] .conversation-footer`;
     const composer = '[class*="_ComposerLayoutRoot_"]:is([data-composer-surface-variant="default"],[data-composer-surface-variant="opaque"],[data-composer-surface-variant="secondary"])';
+    const environmentPanel = '[data-in-progress-fixed-content][class~="group/environment-actions"] .bg-surface-elevated-secondary';
+    const utilityPanel = '[data-composer-utility-rail].bg-background-composer-action-bar';
+    const summaryPanel = '[data-summary-panel-variant].bg-surface-elevated-secondary';
     const decorativeBackground = 'div[aria-hidden="true"][class*="_background_"]:is([class*="_surface_"],[class*="_fade_"],[class*="_combined_"]):empty';
     const panel = mode === "light" ? "255,255,255" : "24,24,27";
     const veil = mode === "light" ? "255,255,255" : "0,0,0";
@@ -198,6 +201,12 @@ ${root} body { background-color: transparent !important; isolation: isolate; }
 ${root} [${SURFACE_ATTRIBUTE}="${owner}"] {
   background-color: transparent !important;
   background-image: none !important;
+}
+/* Native PageSurfaceLayout reserves a spacing unit below its flex workspace.
+   Remove that outer gutter so the panel's own tint reaches the window bottom.
+   Keep this independent of page-sidebar, which changes during sidebar collapse. */
+${root} [data-app-shell-frame][data-app-shell-page-surface="true"]${outsideProtected} {
+  padding-block-end: 0 !important;
 }
 /* page-sidebar labels the whole page, not the sidebar. Paint exactly one
    physical sidebar; nested navigation and floating headers stay transparent. */
@@ -268,6 +277,23 @@ ${root} [data-app-shell-frame] div[aria-hidden="true"][class*="_PageSurface_"]:e
 ${root} [data-message-author-role]${outsideProtected} {
   background-color: rgba(${panel},${config.panelOpacity}) !important;
   border-radius: 14px;
+}
+/* Work-mode panels paint outside the ordinary composer and sidebar. Match the
+   native filled surfaces; floating rails and unstyled summaries stay native. */
+${root} ${environmentPanel}${outsideProtected},
+${root} ${utilityPanel}${outsideProtected},
+${root} ${summaryPanel}${outsideProtected} {
+  background-color: rgba(${panel},${config.panelOpacity}) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+/* Summary section headings and their top-gap caps repeat the card's fill.
+   Let the single outer tint show through without changing sticky behavior or
+   the hover/selection backgrounds on the controls inside each section. */
+${root} ${summaryPanel} header${outsideProtected},
+${root} ${summaryPanel} header${outsideProtected}::before {
+  background-color: transparent !important;
+  background-image: none !important;
 }
 /* Native normal composers paint their root, except on Home where only their
    body paints. Respect the slider and remove the native elevated shadow. */

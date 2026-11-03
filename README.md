@@ -6,6 +6,10 @@ An original, unofficial Mac utility for image backgrounds in the ChatGPT desktop
 
 Choose a local image, adjust its shade, blur, panel opacity and position, then restore the original appearance whenever you want.
 
+## Version 1.1.5 — combined panel coverage
+
+Combines bottom-edge and Work-mode panel opacity fixes with Dots backgrounds and multiwindow support. The updated styling engine replaces earlier loaded versions when applying a background.
+
 ## Version 1.1.4 — Dots backgrounds
 
 Custom backgrounds now show through the Dots page's nested messaging layout. Its footer backing and decorative fades become transparent while message bubbles, attachments, reactions and composer controls retain their native styling. Restore Original removes these overrides.
@@ -23,6 +27,14 @@ Open the new app to use GIF selection and animated preview. If an earlier Backdr
 ## Version 1.1.1 — titlebar tint
 
 Panel Opacity now extends above the left sidebar into the native titlebar. The tint includes the navigation rail, follows sidebar resizing and uses the native titlebar height. It does not intercept button clicks or dragging. Existing GIF support and sidebar edge fixes are retained.
+
+## Version 1.1.2 — bottom-edge coverage
+
+Removes the native page frame's bottom gutter so Panel Opacity reaches the window bottom, including when the sidebar is collapsed to its navigation rail. The native top offset, right inset, inner footer spacing and corner radii are preserved.
+
+## Version 1.1.3 — work-mode panel opacity
+
+Panel Opacity now also controls the Edit environment pill, the Choose project / This computer bar, and the Outputs / Subagents / Sources summary card. Summary headings no longer add an opaque layer over the card. Floating rails, unstyled summaries, item hover states, dialogs and menus keep their native styling.
 
 ## Version 1.0.2 — remaining sidebar edge
 
