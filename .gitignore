@@ -1,0 +1,28 @@
+# Local macOS state
+.DS_Store
+._*
+
+# Built apps, release archives and compiler output
+*.app/
+*.zip
+.build/
+build/
+DerivedData/
+*.swiftmodule
+*.swiftdoc
+*.swiftsourceinfo
+*.abi.json
+
+# Test output and scratch files
+work/
+tmp/
+*.log
+__pycache__/
+*.pyc
+Tests/*-results.json
+Tests/*-known-failures.json
+
+# Local environment configuration
+.env
+.env.*
+!.env.example
