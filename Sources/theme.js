@@ -2,11 +2,12 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.1.2";
+  const VERSION = "1.2.0";
   const GLOBAL = "__chatGPTBackdrop";
   const ROOT_ATTRIBUTE = "data-chatgpt-backdrop";
   const SURFACE_ATTRIBUTE = "data-chatgpt-backdrop-surface";
   const MUTED_ATTRIBUTE = "data-chatgpt-backdrop-muted";
+  const READING_ATTRIBUTE = "data-chatgpt-backdrop-reading";
   const MAX_DATA_LENGTH = 20 * 1024 * 1024;
   const owner = "cgb-" + Math.random().toString(36).slice(2);
   const previousEngine = globalThis[GLOBAL];
@@ -30,6 +31,16 @@
   let originalRootAttribute = null;
   let originalMutedAttribute = null;
   const marked = new Map();
+  const readingScopes = new Map();
+  const readingPlates = new Map();
+  let readingRegions = [];
+  let readingCandidates = [];
+  let readingVisibilityCache = new Map();
+  let readingResizeObserver = null;
+  let readingGeometryObserver = null;
+  let readingObservedNodes = new Set();
+  let readingGeometryFrame = 0;
+  let readingEventsAttached = false;
 
   const nativeSurfaces = [
     "[data-app-shell-page-surface]",
@@ -85,6 +96,9 @@
       opacity: number(input.opacity, 0.5, 0, 0.85),
       blur: number(input.blur, 0, 0, 24),
       panelOpacity: number(input.panelOpacity, 0.68, 0, 1),
+      readingMode: ["none", "sheet", "cards", "focus"].includes(input.readingMode) ? input.readingMode : "none",
+      readingOpacity: number(input.readingOpacity, 0.60, 0, 1),
+      readingBlur: number(input.readingBlur, 8, 0, 24),
       x: number(position.x ?? input.x ?? input.positionX, 50, 0, 100),
       y: number(position.y ?? input.y ?? input.positionY, 50, 0, 100),
       imageBytes: Math.floor(match[2].length * 3 / 4) - (match[2].endsWith("==") ? 2 : match[2].endsWith("=") ? 1 : 0)
@@ -126,6 +140,304 @@
     marked.clear();
   }
 
+  function restoreReadingScope(node, previous) {
+    if (!node.getAttribute(READING_ATTRIBUTE)?.startsWith(owner + ":")) return;
+    if (previous === null) node.removeAttribute(READING_ATTRIBUTE);
+    else node.setAttribute(READING_ATTRIBUTE, previous);
+  }
+
+  function clearReading() {
+    readingResizeObserver?.disconnect();
+    readingGeometryObserver?.disconnect();
+    readingResizeObserver = readingGeometryObserver = null;
+    readingObservedNodes.clear();
+    if (readingGeometryFrame) cancelAnimationFrame(readingGeometryFrame);
+    readingGeometryFrame = 0;
+    if (readingEventsAttached) {
+      removeEventListener("resize", scheduleReadingGeometry);
+      removeEventListener("scroll", onReadingScroll, true);
+      readingEventsAttached = false;
+    }
+    for (const record of readingPlates.values()) record.element.remove();
+    readingPlates.clear();
+    for (const [node, previous] of readingScopes) restoreReadingScope(node, previous);
+    readingScopes.clear();
+    readingRegions = [];
+    readingCandidates = [];
+    readingVisibilityCache.clear();
+  }
+
+  function isReadingStructure(node) {
+    return node instanceof HTMLElement && node.isConnected &&
+      !node.closest(protectedSurface + ',aside,.app-shell-left-panel');
+  }
+
+  function isPaintedReadingAncestor(node) {
+    if (!(node instanceof Element)) return true;
+    if (readingVisibilityCache.has(node)) return readingVisibilityCache.get(node);
+    const style = getComputedStyle(node);
+    const painted = style.display !== "none" && style.visibility !== "hidden" && style.visibility !== "collapse" &&
+      Number(style.opacity) !== 0 && isPaintedReadingAncestor(node.parentElement);
+    readingVisibilityCache.set(node, painted);
+    return painted;
+  }
+
+  function isReadingElement(node) {
+    return isReadingStructure(node) && !node.closest('[hidden],[inert],[aria-hidden="true"]') && isPaintedReadingAncestor(node);
+  }
+
+  function isUserUnit(node) {
+    // Search wrappers may be absent in local turns; the desktop user-message
+    // renderer still emits its named group on the native bubble container.
+    const selector = '[data-local-conversation-user-anchor],[data-message-author-role="user"],[class~="group/user-message"]';
+    return !!node.closest(selector) || !!node.querySelector(selector);
+  }
+
+  function readingCardCandidates(column) {
+    // The desktop renderer uses search-unit wrappers for assistant responses and
+    // tool groups. Explicit user anchors/bubbles are never card targets.
+    const candidates = new Set([...column.querySelectorAll(
+      '[data-content-search-unit-key],[data-chatgpt-search-unit-key],[data-message-author-role="assistant"]'
+    )].filter(node => isReadingStructure(node) && !isUserUnit(node)));
+    // Local turns can omit search-unit wrappers for grouped agent activity.
+    // Their renderer exposes a turn key and either one virtualized content
+    // block or an immediate flex-column list of response groups. Only use that
+    // verified shallow structure; never scan arbitrary nested tool/card divs.
+    for (const turn of column.querySelectorAll('[data-turn-key]')) {
+      const body = [...turn.children].find(node => node instanceof HTMLElement &&
+        (node.hasAttribute('data-virtualized-turn-content') ||
+          (node.classList.contains('flex') && node.classList.contains('flex-col'))));
+      if (!body) continue;
+      const groups = body.hasAttribute('data-virtualized-turn-content') ? [body] :
+        [...body.children].filter(node => node instanceof HTMLElement && node.classList.contains('flex') && node.classList.contains('flex-col'));
+      for (const group of groups) if (isReadingStructure(group) && !isUserUnit(group)) candidates.add(group);
+    }
+    return [...candidates];
+  }
+
+  function readingCardTargets(candidates, column) {
+    // A display:contents/search wrapper can have no box while its nested
+    // response is visible. It must not suppress that response during dedup.
+    const visible = new Set(candidates.filter(node => {
+      if (!isReadingElement(node)) return false;
+      const box = node.getBoundingClientRect();
+      return box.width > 0 && box.height > 0;
+    }));
+    return [...visible].filter(node => {
+      for (let parent = node.parentElement; parent && parent !== column; parent = parent.parentElement) {
+        if (visible.has(parent)) return false;
+      }
+      return true;
+    });
+  }
+
+  function readingClipBounds(node, viewport, visible, cache) {
+    if (!node || node === viewport) return visible;
+    if (cache.has(node)) return cache.get(node);
+    const parent = readingClipBounds(node.parentElement, viewport, visible, cache);
+    const bounds = {...parent};
+    const style = getComputedStyle(node);
+    // Cards live in the owned wallpaper layer, so mirror native intermediate
+    // clipping without changing the response/tool wrappers themselves.
+    if (style.display !== "contents") {
+      const clipX = /^(hidden|clip|auto|scroll|overlay)$/.test(style.overflowX);
+      const clipY = /^(hidden|clip|auto|scroll|overlay)$/.test(style.overflowY);
+      if (clipX || clipY) {
+        const box = node.getBoundingClientRect();
+        const scaleX = node.offsetWidth > 0 ? box.width / node.offsetWidth : 1;
+        const scaleY = node.offsetHeight > 0 ? box.height / node.offsetHeight : 1;
+        const left = box.left + node.clientLeft * scaleX;
+        const top = box.top + node.clientTop * scaleY;
+        if (clipX) { bounds.left = Math.max(bounds.left, left); bounds.right = Math.min(bounds.right, left + node.clientWidth * scaleX); }
+        if (clipY) { bounds.top = Math.max(bounds.top, top); bounds.bottom = Math.min(bounds.bottom, top + node.clientHeight * scaleY); }
+      }
+    }
+    cache.set(node, bounds);
+    return bounds;
+  }
+
+  function readingStyle(element, property, value) {
+    if (element.style.getPropertyValue(property) !== value) element.style.setProperty(property, value);
+  }
+
+  function scheduleReadingGeometry() {
+    if (!active || !config || config.readingMode === "none" || readingGeometryFrame) return;
+    readingGeometryFrame = requestAnimationFrame(() => {
+      readingGeometryFrame = 0;
+      syncReadingGeometry();
+    });
+  }
+
+  function onReadingScroll(event) {
+    if (event.target === document || readingRegions.some(region =>
+      event.target === region.viewport || (event.target instanceof Node && region.viewport.contains(event.target)))) {
+      scheduleReadingGeometry();
+    }
+  }
+
+  function observeReadingGeometry() {
+    const wanted = new Set();
+    for (const region of readingCandidates) {
+      wanted.add(region.viewport);
+      for (let node = region.column; node && node !== document.body; node = node.parentElement) wanted.add(node);
+      // Keep collapsed/hidden candidates observed as well, so expanding a
+      // native tool group can restore its plate without reapplying settings.
+      for (const target of region.targets) {
+        for (let node = target; node && node !== region.column; node = node.parentElement) wanted.add(node);
+      }
+    }
+    const unchanged = wanted.size === readingObservedNodes.size && [...wanted].every(node => readingObservedNodes.has(node));
+    if (unchanged) return;
+    readingResizeObserver?.disconnect();
+    readingGeometryObserver?.disconnect();
+    readingResizeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(() => {
+      scheduleSync();
+      scheduleReadingGeometry();
+    }) : null;
+    readingGeometryObserver = new MutationObserver(() => {
+      scheduleSync();
+      scheduleReadingGeometry();
+    });
+    for (const node of wanted) {
+      readingResizeObserver?.observe(node);
+      readingGeometryObserver.observe(node, {attributes: true, attributeFilter: ["style", "class", "hidden", "aria-hidden", "inert"]});
+    }
+    readingObservedNodes = wanted;
+    if (!readingEventsAttached) {
+      addEventListener("resize", scheduleReadingGeometry);
+      addEventListener("scroll", onReadingScroll, true);
+      readingEventsAttached = true;
+    }
+  }
+
+  function syncReadingSurfaces() {
+    if (!active || !config || config.readingMode === "none" || isMutedRoute()) { clearReading(); return; }
+    readingVisibilityCache = new Map();
+    const regions = [];
+    const candidates = [];
+    const wantedTargets = new Set();
+    const wantedScopes = new Set();
+    // This native centered wrapper supplies the real chat width. The viewport
+    // supplies the vertical extent, including its sticky composer. A single
+    // plate avoids stacking a transcript tint with a separate footer tint.
+    for (const column of document.querySelectorAll('[data-thread-user-message-navigation-content]')) {
+      if (!isReadingStructure(column)) continue;
+      const viewport = column.closest('.thread-scroll-container');
+      if (!isReadingStructure(viewport)) continue;
+      const cardCandidates = config.readingMode === "cards" ? readingCardCandidates(column) : [];
+      candidates.push({column, viewport, targets: cardCandidates});
+      if (!isReadingElement(column) || !isReadingElement(viewport)) continue;
+      const box = column.getBoundingClientRect(), view = viewport.getBoundingClientRect();
+      if (box.width <= 0 || view.width <= 0 || view.height <= 0) continue;
+      const targets = config.readingMode === "cards" ? readingCardTargets(cardCandidates, column) : [column];
+      if (!targets.length) continue;
+      regions.push({column, viewport, targets});
+      wantedScopes.add(viewport);
+      for (const target of targets) {
+        wantedTargets.add(target);
+        let record = readingPlates.get(target);
+        if (!record) {
+          const element = document.createElement("div");
+          element.setAttribute("aria-hidden", "true");
+          element.setAttribute("data-chatgpt-backdrop-reading-layer", owner);
+          element.style.cssText = "position:absolute;pointer-events:none;overflow:hidden;box-sizing:border-box;";
+          layer.append(element);
+          record = {element, target, column, viewport};
+          readingPlates.set(target, record);
+        }
+        record.column = column; record.viewport = viewport;
+        record.element.setAttribute("data-chatgpt-backdrop-reading-mode", config.readingMode);
+        record.element.setAttribute("data-chatgpt-backdrop-reading-kind", config.readingMode === "cards" ? "card" : "column");
+      }
+    }
+    for (const [target, record] of readingPlates) {
+      if (!wantedTargets.has(target)) { record.element.remove(); readingPlates.delete(target); }
+    }
+    for (const [viewport, previous] of readingScopes) {
+      if (!wantedScopes.has(viewport)) { restoreReadingScope(viewport, previous); readingScopes.delete(viewport); }
+    }
+    for (const viewport of wantedScopes) {
+      if (!readingScopes.has(viewport)) readingScopes.set(viewport, viewport.getAttribute(READING_ATTRIBUTE));
+      const value = owner + ":" + config.readingMode;
+      if (viewport.getAttribute(READING_ATTRIBUTE) !== value) viewport.setAttribute(READING_ATTRIBUTE, value);
+    }
+    readingRegions = regions;
+    readingCandidates = candidates;
+    if (!candidates.length) { clearReading(); return; }
+    observeReadingGeometry();
+    syncReadingGeometry();
+  }
+
+  function syncReadingGeometry() {
+    if (!active || !config || config.readingMode === "none") return;
+    readingVisibilityCache = new Map();
+    const panel = mode === "light" ? "255,255,255" : "24,24,27";
+    const edge = mode === "light" ? "0,0,0" : "255,255,255";
+    const windowWidth = document.documentElement.clientWidth || innerWidth;
+    const windowHeight = document.documentElement.clientHeight || innerHeight;
+    const clipBoundsCache = new Map();
+    const cardSpacing = new Map();
+    if (config.readingMode === "cards") {
+      for (const region of readingRegions) {
+        const rows = region.targets.map(target => ({target, box: target.getBoundingClientRect()})).sort((a, b) => a.box.top - b.box.top);
+        rows.forEach((row, index) => {
+          const previous = rows[index - 1], next = rows[index + 1];
+          // Visual padding must not overlap the neighboring reading card and
+          // multiply its opacity when native response groups have small gaps.
+          cardSpacing.set(row.target, {
+            top: previous ? Math.min(10, Math.max(0, (row.box.top - previous.box.bottom) / 2)) : 10,
+            bottom: next ? Math.min(10, Math.max(0, (next.box.top - row.box.bottom) / 2)) : 10
+          });
+        });
+      }
+    }
+    let refreshNeeded = false;
+    for (const record of readingPlates.values()) {
+      const {element, target, column, viewport} = record;
+      if (!isReadingElement(column) || !isReadingElement(viewport) || !isReadingElement(target) || isMutedRoute()) {
+        readingStyle(element, "display", "none"); refreshNeeded = true; continue;
+      }
+      const view = viewport.getBoundingClientRect(), col = column.getBoundingClientRect();
+      const isCard = config.readingMode === "cards";
+      const isFocus = config.readingMode === "focus";
+      const viewBounds = {left: Math.max(0, view.left), right: Math.min(windowWidth, view.right), top: Math.max(0, view.top), bottom: Math.min(windowHeight, view.bottom)};
+      const visible = isCard ? readingClipBounds(target.parentElement, viewport, viewBounds, clipBoundsCache) : viewBounds;
+      const box = isCard ? target.getBoundingClientRect() : col;
+      const spacing = cardSpacing.get(target) || {top: 0, bottom: 0};
+      const bounds = isCard ? {left: Math.max(col.left, box.left - 10), right: Math.min(col.right, box.right + 10), top: box.top - spacing.top, bottom: box.bottom + spacing.bottom} :
+        {left: Math.max(col.left - (isFocus ? 48 : 0), visible.left), right: Math.min(col.right + (isFocus ? 48 : 0), visible.right), top: visible.top, bottom: visible.bottom};
+      const cutTop = Math.max(0, visible.top - bounds.top), cutRight = Math.max(0, bounds.right - visible.right);
+      const cutBottom = Math.max(0, bounds.bottom - visible.bottom), cutLeft = Math.max(0, visible.left - bounds.left);
+      const width = bounds.right - bounds.left, height = bounds.bottom - bounds.top;
+      if (box.width <= 0 || (isCard && box.height <= 0) || height <= 0 || width <= 0 || visible.right <= visible.left || visible.bottom <= visible.top || bounds.right <= visible.left || bounds.left >= visible.right || bounds.bottom <= visible.top || bounds.top >= visible.bottom) {
+        if (box.width <= 0 || col.width <= 0 || view.width <= 0 || view.height <= 0) refreshNeeded = true;
+        readingStyle(element, "display", "none"); continue;
+      }
+      const radius = config.readingMode === "focus" ? 0 : isCard ? 16 : 18;
+      const columnStyle = isFocus ? getComputedStyle(column) : null;
+      // Spend the available gutter and native column padding on the fade, so
+      // the first and last text characters still sit on the full-strength tint.
+      const leftFeather = isFocus ? Math.min(72, Math.max(0, col.left - bounds.left + (parseFloat(columnStyle.paddingLeft) || 0))) : 0;
+      const rightFeather = isFocus ? Math.min(72, Math.max(0, bounds.right - col.right + (parseFloat(columnStyle.paddingRight) || 0))) : 0;
+      const mask = isFocus ? `linear-gradient(to right,transparent,black ${leftFeather}px,black calc(100% - ${rightFeather}px),transparent)` : "none";
+      readingStyle(element, "display", "block");
+      readingStyle(element, "left", bounds.left + "px");
+      readingStyle(element, "top", bounds.top + "px");
+      readingStyle(element, "width", width + "px");
+      readingStyle(element, "height", height + "px");
+      readingStyle(element, "border-radius", radius + "px");
+      readingStyle(element, "clip-path", `inset(${cutTop}px ${cutRight}px ${cutBottom}px ${cutLeft}px round ${radius}px)`);
+      readingStyle(element, "background-color", `rgba(${panel},${config.readingOpacity})`);
+      readingStyle(element, "backdrop-filter", config.readingBlur > 0 ? `blur(${config.readingBlur}px)` : "none");
+      readingStyle(element, "-webkit-backdrop-filter", config.readingBlur > 0 ? `blur(${config.readingBlur}px)` : "none");
+      readingStyle(element, "mask-image", mask);
+      readingStyle(element, "-webkit-mask-image", mask);
+      readingStyle(element, "box-shadow", config.readingMode === "focus" ? "none" : `inset 0 0 0 1px rgba(${edge},${config.readingOpacity * 0.14})`);
+      if (!element.isConnected) layer.append(element);
+    }
+    if (refreshNeeded) scheduleSync();
+  }
+
   function syncSurfaces() {
     if (!active || !document.body) return;
     const muted = isMutedRoute();
@@ -162,6 +474,7 @@
     if (mode !== nextMode) { mode = nextMode; updateOwnedStyles(); }
     if (layer && !layer.isConnected) document.body.prepend(layer);
     if (stylesheet && !stylesheet.isConnected) (document.head || document.documentElement).append(stylesheet);
+    syncReadingSurfaces();
   }
 
   function scheduleSync() {
@@ -259,6 +572,14 @@ ${root} [data-message-author-role]${outsideProtected} {
   background-color: rgba(${panel},${config.panelOpacity}) !important;
   border-radius: 14px;
 }
+/* A reading treatment replaces our assistant-wrapper tint, rather than
+   multiplying Panel Opacity into its independently controlled opacity. Native
+   user bubbles, code backgrounds and result-card surfaces are left intact. */
+${root} [${READING_ATTRIBUTE}="${owner}:sheet"] [data-message-author-role="assistant"]${outsideProtected},
+${root} [${READING_ATTRIBUTE}="${owner}:cards"] [data-message-author-role="assistant"]${outsideProtected},
+${root} [${READING_ATTRIBUTE}="${owner}:focus"] [data-message-author-role="assistant"]${outsideProtected} {
+  background-color: transparent !important;
+}
 /* Native normal composers paint their root, except on Home where only their
    body paints. Respect the slider and remove the native elevated shadow. */
 ${root} ${composer}${outsideProtected} {
@@ -291,6 +612,8 @@ html[${ROOT_ATTRIBUTE}="${owner}"][${MUTED_ATTRIBUTE}="${owner}"] [data-chatgpt-
       mode: active && isMutedRoute() ? "paused" : mode,
       surfaceCount: marked.size,
       imageBytes: active && config ? config.imageBytes : 0,
+      readingMode: active && config ? config.readingMode : "none",
+      readingSurfaceCount: [...readingPlates.values()].filter(record => record.element.style.display !== "none").length,
       version: VERSION
     };
   }
@@ -357,6 +680,7 @@ html[${ROOT_ATTRIBUTE}="${owner}"][${MUTED_ATTRIBUTE}="${owner}"] [data-chatgpt-
     treeObserver?.disconnect();
     themeObserver?.disconnect();
     treeObserver = themeObserver = null;
+    clearReading();
     if (frame) cancelAnimationFrame(frame);
     frame = 0;
     removeEventListener("popstate", scheduleSync);

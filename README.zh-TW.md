@@ -4,6 +4,19 @@
 
 原創、非官方的 Mac 圖片背景工具。可選自己的圖片，調整遮罩、模糊、面板透明度與圖片位置，並恢復 ChatGPT 原本的外觀。
 
+## 1.2.0 — 閱讀模式
+
+新增 **Reading Mode**，提供四個單字選項：
+
+- **None**：保留原本外觀；舊主題也預設使用這個模式。
+- **Sheet**：在聊天欄後方放一整片半透明閱讀底板。
+- **Cards**：為回覆與工具群組分別加上閱讀卡片。
+- **Focus**：在聊天室中央加上柔和底色，邊緣漸淡，不加卡片框線。
+
+**Reading Opacity** 與 **Reading Blur** 獨立控制閱讀效果，不影響側欄的 Panel Opacity。文字與按鈕維持清晰，閱讀底板會跟隨實際聊天欄寬度與捲動範圍；選 None 可移除閱讀效果並保留桌布。設定會隨主題儲存與匯入。沒有辨識到聊天欄的新頁面或不支援畫面不會加入底板。
+
+四選項需要開啟新版 App。舊版仍連接中時，先儲存主題並記下 **Advanced → Local Port**，再結束舊版；新版填入同一個埠號按 **Connect**，匯入主題並套用，即可沿用連線而無須重啟 ChatGPT。
+
 ## 1.1.0 — GIF 動態背景與 Logo
 
 - 可選擇 GIF 當背景，並在工具中播放預覽。
@@ -41,7 +54,7 @@ Panel Opacity 的半透明遮罩會向上延伸到左側標題列，包含導覽
 
 1. 先執行 `zsh build.sh`，再雙擊產生的 **ChatGPT Backdrop.app**。
 2. 按 **Choose Background…** 選擇本機圖片或 GIF，或先用內附的 Twilight Hills 範例。
-3. 調整右側滑桿；**Save Theme…** 可將圖片和設定一起存成 JSON，下次再用 **Import Theme…** 匯入。
+3. 調整右側滑桿並選擇 **None / Sheet / Cards / Focus**；**Save Theme…** 可將圖片和設定一起存成 JSON，下次再用 **Import Theme…** 匯入。
 4. 等 ChatGPT 目前的工作完成，再按 **Apply Background**。**首次套用會要求確認重新啟動 ChatGPT，這會中斷目前工作。**
 5. 按 **Restore Original** 可清除背景；正常結束工具時也會嘗試清除。
 
