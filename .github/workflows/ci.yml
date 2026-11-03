@@ -1,0 +1,72 @@
+name: macOS CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# macos-15 is a supported Apple Silicon standard runner. This validates
+# the arm64 build on macOS 15; macOS 14 compatibility still needs separate
+# verification. Keep check names stable after adding them to a ruleset.
+jobs:
+  build:
+    name: Build macOS App
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build app
+        run: zsh build.sh
+      - name: Validate app bundle
+        run: |
+          plutil -lint "ChatGPT Backdrop.app/Contents/Info.plist"
+          codesign --verify --deep --strict "ChatGPT Backdrop.app"
+          test "$(lipo -archs 'ChatGPT Backdrop.app/Contents/MacOS/ChatGPTBackdrop')" = arm64
+          test -s "ChatGPT Backdrop.app/Contents/Resources/theme.js"
+
+  cdp-tests:
+    name: CDP Tests
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Test local CDP transport and endpoint validation
+        run: zsh Tests/run.sh
+
+  media-tests:
+    name: Media Tests
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Test images and GIF preservation
+        run: zsh Tests/run-media.sh
+
+  theme-tests:
+    name: Theme Tests
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      # This harness uses AppKit and WebKit with a visible accessory window.
+      # Confirm it runs reliably on the hosted runner before requiring this
+      # check in the repository ruleset. Failures remain visible in Actions.
+      - name: Test isolated WebKit theme and restoration
+        run: zsh Tests/run-theme.sh
