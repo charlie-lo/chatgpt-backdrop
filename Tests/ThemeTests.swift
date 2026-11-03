@@ -131,6 +131,29 @@ final class Runner: NSObject, WKNavigationDelegate {
         #navigation-rail{flex:0 0 52px;width:52px;pointer-events:auto}
         #sidebar-content{flex:1;min-width:0}
         #peeking-sidebar{position:absolute;left:0;top:420px;width:90px;height:80px}
+        /* Dots embeds its own messaging shell inside main.thread-pane. The
+           inner shell and div.thread-pane each paint independently of main. */
+        :root{--color-background-primary:rgb(24,24,24)}
+        :root.light{--color-background-primary:rgb(250,250,250)}
+        .messaging-root{background:var(--color-background-primary)}
+        .messaging-embedded{display:flex;flex-direction:column;width:100%;min-width:0;height:100%;min-height:0;position:relative}
+        :where(.messaging-root) .thread-pane{background:var(--color-background-primary);display:flex;flex-direction:column;min-width:0;min-height:0;position:relative;container-type:inline-size}
+        .thread-pane.flex-1{flex:1}
+        #dots-page{position:absolute;left:600px;top:140px;width:400px;height:300px}
+        #dots-outer-pane{flex:1}
+        .conversation-viewport{display:flex;flex:1;min-height:0}
+        .messages-scroll{flex:1;overflow-y:auto;min-height:0}
+        .message-list{min-height:420px}
+        .message-row.self .message-bubble{background:rgb(113,146,184);border-radius:18px;padding:8px}
+        .dots-reaction,.dots-attachment{background:var(--color-background-primary);border:1px solid rgb(90,90,90)}
+        .conversation-footer{z-index:2;pointer-events:none;inset-inline:0;position:absolute;bottom:0}
+        .composer-wrap{pointer-events:auto;flex-shrink:0}
+        .composer-wrap:not([data-has-composer-surface]){border-bottom:12px solid var(--color-background-primary)}
+        .composer-disclaimer{background:var(--color-background-primary);padding:6px 12px 0}
+        .typing-indicator:not(:empty){background:var(--color-background-primary);padding-block:12px}
+        #dots-footer ._background_fixture{position:absolute;inset:0;pointer-events:none}
+        #dots-disclaimer-above{position:relative}
+        #standalone-messaging,#dots-attachments-viewer{display:none}
         </style>
         <script>
         \(engine)
@@ -162,6 +185,24 @@ final class Runner: NSObject, WKNavigationDelegate {
             </div>
             <section id="home-composer" class="_ComposerLayoutRoot_fixture" data-composer-surface-variant="default" data-composer-utility-bar-variant="home"><div id="home-composer-body" class="_ComposerLayoutBody_fixture" data-composer-body>Home composer body</div></section>
           </main>
+          <div id="dots-page" class="messaging-root messaging-embedded"><main id="dots-outer-pane" class="thread-pane">
+            <div id="dots-inner-root" class="messaging-root messaging-embedded" data-chatgpt-backdrop-surface="prior-dots"><div id="dots-inner-pane" class="thread-pane flex-1">
+              <div class="conversation-viewport"><div id="dots-scroll" class="messages-scroll" data-role="messages-scroll"><div class="message-list">
+                <div class="message-row self"><div id="dots-bubble" class="message-bubble">Native blue message</div></div>
+                <button id="dots-reaction" class="dots-reaction" type="button">Reaction</button><div id="dots-attachment" class="dots-attachment">Attachment card</div>
+              </div></div></div>
+            </div></div>
+            <div id="dots-footer" class="conversation-footer">
+              <div id="dots-typing" class="typing-indicator">Typing indicator</div>
+              <div id="dots-composer-wrap" class="composer-wrap">
+                <div id="dots-disclaimer-above" class="composer-disclaimer-above"><div id="dots-footer-surface" class="_background_fixture _surface_fixture" aria-hidden="true"></div><div id="dots-footer-fade" class="_background_fixture _fade_fixture" aria-hidden="true"></div><span id="dots-legal">Native disclaimer text</span></div>
+                <section id="dots-composer" class="_ComposerLayoutRoot_fixture" data-role="composer" data-codex-composer-root data-composer-surface-variant="default"><div id="dots-transcript-backdrop" class="_transcriptBackdrop_fixture"><div id="dots-footer-combined" class="_background_fixture _combined_fixture" aria-hidden="true"></div></div><div contenteditable="true" id="dots-editor">Dots message</div><button id="dots-send" type="button" onclick="window.dotsSendClicks=(window.dotsSendClicks||0)+1">Send</button></section>
+              </div>
+              <div id="dots-disclaimer" class="composer-disclaimer">Native footer text</div>
+            </div>
+          </main></div>
+          <div id="standalone-messaging" class="messaging-root"><div class="thread-pane"><div class="conversation-footer"><div class="composer-wrap"><div class="composer-disclaimer-above"><div class="_background_fixture _surface_fixture" aria-hidden="true"></div></div></div></div></div></div>
+          <div id="dots-attachments-viewer" class="messaging-root messaging-attachments"><div class="thread-pane">Attachment viewer</div></div>
         </div>
         </body></html>
         """
@@ -180,12 +221,23 @@ final class Runner: NSObject, WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         Task { @MainActor [weak self] in
             do {
+                // Launch Services and accessibility clients may briefly take
+                // focus while this standalone fixture is starting. Reclaim its
+                // own key window before checking native CSS focus behavior.
+                NSApp.activate(ignoringOtherApps: true)
+                self?.window?.makeKeyAndOrderFront(nil)
+                self?.window?.makeFirstResponder(webView)
+                let nativeFocusBefore = ["applicationActive": NSApp.isActive,
+                                         "keyWindow": self?.window?.isKeyWindow ?? false]
                 let value = try await webView.callAsyncJavaScript(Self.assertions, arguments: [:], in: nil, contentWorld: .page)
                 guard var object = value as? [String: Any],
                       var checks = object["checks"] as? [[String: Any]], let self else {
                     self?.finish(error: "WebKit returned an unexpected result: \(String(describing: value))")
                     return
                 }
+                object["nativeFocusBefore"] = nativeFocusBefore
+                object["nativeFocusAfter"] = ["applicationActive": NSApp.isActive,
+                                             "keyWindow": self.window?.isKeyWindow ?? false]
                 if object["gifSupported"] as? Bool == true {
                     let animation = await self.verifyGIFAnimation()
                     checks.append(contentsOf: animation.checks)
@@ -291,8 +343,30 @@ final class Runner: NSObject, WKNavigationDelegate {
     const api = globalThis.__chatGPTBackdrop;
     test('early injection queues document readiness', beforeDOM.pending === true && beforeDOM.active === false);
     test('early apply completes at DOMContentLoaded', api.status().active === true);
+    test('early apply reveals the nested Dots messaging shell', ['dots-page', 'dots-outer-pane', 'dots-inner-root', 'dots-inner-pane'].every(id => getComputedStyle(document.getElementById(id)).backgroundColor === 'rgba(0, 0, 0, 0)'));
     api.restore();
     const baseline = document.documentElement.outerHTML;
+    const dotsPage = document.getElementById('dots-page');
+    const dotsNativeClone = dotsPage.cloneNode(true);
+    const dotsNodes = ['dots-page', 'dots-outer-pane', 'dots-inner-root', 'dots-inner-pane'].map(id => document.getElementById(id));
+    const dotsBubble = document.getElementById('dots-bubble');
+    const dotsReaction = document.getElementById('dots-reaction');
+    const dotsAttachment = document.getElementById('dots-attachment');
+    const dotsWrap = document.getElementById('dots-composer-wrap');
+    const dotsWrapStyle = dotsWrap.getAttribute('style');
+    const dotsScroll = document.getElementById('dots-scroll');
+    const dotsNative = {
+      rootBackground: getComputedStyle(dotsPage).backgroundColor,
+      bubble: getComputedStyle(dotsBubble).backgroundColor,
+      reaction: getComputedStyle(dotsReaction).backgroundColor,
+      attachment: getComputedStyle(dotsAttachment).backgroundColor,
+      borderWidth: getComputedStyle(dotsWrap).borderBottomWidth,
+      wrapPointer: getComputedStyle(dotsWrap).pointerEvents,
+      footerPointer: getComputedStyle(document.getElementById('dots-footer')).pointerEvents,
+      scrollOverflow: getComputedStyle(dotsScroll).overflowY,
+      scrollHeight: dotsScroll.scrollHeight,
+      scrollClientHeight: dotsScroll.clientHeight
+    };
     const code = document.querySelector('pre');
     const dialog = document.querySelector('[role=dialog] [data-message-author-role]');
     const codeBG = getComputedStyle(code).backgroundColor;
@@ -374,6 +448,53 @@ final class Runner: NSObject, WKNavigationDelegate {
     test('reapply owns exactly one style and layer', document.querySelectorAll('[data-chatgpt-backdrop-layer]').length === 1 && document.querySelectorAll('[data-chatgpt-backdrop-style]').length === 1);
     const requestedAlpha = 0.1866135817307692;
     api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: requestedAlpha}); await wait();
+    test('Dots nested page surfaces all reveal the wallpaper', dotsNodes.every(node => alpha(node) === 0 && getComputedStyle(node).backgroundImage === 'none'));
+    test('Dots shared footer surface, fade and transcript backing are removed', ['dots-footer-surface', 'dots-footer-fade', 'dots-footer-combined'].every(id => decorationAbsent(document.getElementById(id))));
+    test('Dots footer wrappers and disclaimer text remain visible', ['dots-footer', 'dots-disclaimer-above', 'dots-transcript-backdrop', 'dots-legal', 'dots-disclaimer'].every(id => { const style = getComputedStyle(document.getElementById(id)); return style.display !== 'none' && style.visibility === 'visible' && Number(style.opacity) > 0; }));
+    test('Dots disclaimer and nonempty typing indicator have transparent backing', alpha(document.getElementById('dots-disclaimer')) === 0 && alpha(document.getElementById('dots-typing')) === 0);
+    test('Dots composer bottom inset loses only its paint', alpha(dotsWrap) === 0 && getComputedStyle(dotsWrap).borderBottomColor === 'rgba(0, 0, 0, 0)' && getComputedStyle(dotsWrap).borderBottomWidth === dotsNative.borderWidth && dotsNative.borderWidth === '12px');
+    test('Dots composer follows the selected panel opacity once', Math.abs(alpha(document.getElementById('dots-composer')) - requestedAlpha) < 0.005 && alpha(document.getElementById('dots-editor')) === 0);
+    test('Dots blue bubbles retain their native fill', getComputedStyle(dotsBubble).backgroundColor === dotsNative.bubble && dotsNative.bubble === 'rgb(113, 146, 184)');
+    test('Dots reactions and attachments retain the native primary color', getComputedStyle(dotsReaction).backgroundColor === dotsNative.reaction && getComputedStyle(dotsAttachment).backgroundColor === dotsNative.attachment && dotsNative.reaction === dotsNative.rootBackground);
+    test('Dots footer and composer keep their native pointer behavior', getComputedStyle(dotsWrap).pointerEvents === dotsNative.wrapPointer && dotsNative.wrapPointer === 'auto' && getComputedStyle(document.getElementById('dots-footer')).pointerEvents === dotsNative.footerPointer && dotsNative.footerPointer === 'none');
+    dotsScroll.scrollTop = 64;
+    test('Dots transcript retains native overflow, height and scrolling', getComputedStyle(dotsScroll).overflowY === dotsNative.scrollOverflow && dotsNative.scrollOverflow === 'auto' && dotsScroll.scrollTop === 64 && dotsScroll.scrollHeight === dotsNative.scrollHeight && dotsScroll.clientHeight === dotsNative.scrollClientHeight);
+    dotsScroll.scrollTop = 0;
+    const dotsSend = document.getElementById('dots-send');
+    const dotsSendBox = dotsSend.getBoundingClientRect();
+    const dotsSendHit = document.elementFromPoint(dotsSendBox.left + dotsSendBox.width / 2, dotsSendBox.top + dotsSendBox.height / 2);
+    test('Dots composer send button remains reachable by pointer hit testing', dotsSendHit === dotsSend || dotsSend.contains(dotsSendHit));
+    dotsSend.click();
+    test('Dots composer send handler remains functional', window.dotsSendClicks === 1);
+    const dotsEditor = document.getElementById('dots-editor'); dotsEditor.focus();
+    test('Dots editor remains editable and receives focus', dotsEditor.isContentEditable && document.activeElement === dotsEditor);
+    dotsEditor.blur();
+    dotsWrap.setAttribute('data-has-composer-surface', '');
+    dotsWrap.style.borderBottom = '7px solid rgb(81, 82, 83)';
+    test('Dots alternate composer-surface variant retains its own bottom border', getComputedStyle(dotsWrap).borderBottomColor === 'rgb(81, 82, 83)' && getComputedStyle(dotsWrap).borderBottomWidth === '7px');
+    dotsWrap.removeAttribute('data-has-composer-surface');
+    if (dotsWrapStyle === null) dotsWrap.removeAttribute('style'); else dotsWrap.setAttribute('style', dotsWrapStyle);
+    const dotsContentDecoration = document.createElement('div');
+    dotsContentDecoration.className = '_background_fixture _fade_fixture'; dotsContentDecoration.setAttribute('aria-hidden', 'true'); dotsContentDecoration.innerHTML = '<button type="button">Retained control</button>';
+    document.getElementById('dots-footer').append(dotsContentDecoration); await wait();
+    test('Dots matching footer layer with controls is preserved', !decorationAbsent(dotsContentDecoration) && getComputedStyle(dotsContentDecoration.firstElementChild).visibility === 'visible');
+    dotsContentDecoration.remove();
+    test('standalone messaging and attachment-viewer page paint is preserved', ['standalone-messaging', 'dots-attachments-viewer'].every(id => { const node = document.getElementById(id); return getComputedStyle(node).backgroundColor === dotsNative.rootBackground && getComputedStyle(node.firstElementChild).backgroundColor === dotsNative.rootBackground && !node.hasAttribute('data-chatgpt-backdrop-surface'); }));
+    test('matching footer decorations outside embedded Dots are preserved', !decorationAbsent(document.querySelector('#standalone-messaging ._background_fixture')));
+    const protectedDotsResults = [];
+    for (const [attribute, value] of [['role', 'dialog'], ['role', 'menu'], ['data-settings-page', ''], ['data-testid', 'settings-modal']]) {
+      const wrapper = document.createElement('div'); wrapper.setAttribute(attribute, value); wrapper.style.display = 'none';
+      const copy = dotsNativeClone.cloneNode(true); copy.removeAttribute('id'); copy.querySelectorAll('[id]').forEach(node => node.removeAttribute('id'));
+      wrapper.append(copy); dotsPage.append(wrapper); await wait();
+      const pane = copy.querySelector('.thread-pane');
+      const footer = copy.querySelector('.conversation-footer');
+      const pass = getComputedStyle(copy).backgroundColor === dotsNative.rootBackground && getComputedStyle(pane).backgroundColor === dotsNative.rootBackground && !copy.hasAttribute('data-chatgpt-backdrop-surface') &&
+        !decorationAbsent(footer.querySelector('._surface_fixture')) && getComputedStyle(footer.querySelector('.composer-disclaimer')).backgroundColor === dotsNative.rootBackground && getComputedStyle(footer.querySelector('.composer-wrap')).borderBottomColor === dotsNative.rootBackground;
+      protectedDotsResults.push({attribute, value, pass});
+      wrapper.remove();
+    }
+    test('Dots matching roots and footer paint inside protected dialogs menus and settings are preserved', protectedDotsResults.every(result => result.pass));
+    const dotsDiagnostic = {native: dotsNative, originalWrapStyle: dotsWrapStyle, activeSurfaces: dotsNodes.map(node => ({id: node.id, background: getComputedStyle(node).backgroundColor})), protected: protectedDotsResults};
     test('outer page-sidebar layout remains transparent', alpha(document.getElementById('root')) === 0);
     test('actual sidebar gets the requested tint once', Math.abs(alpha(document.getElementById('sidebar')) - requestedAlpha) < 0.005);
     const capStyle = () => getComputedStyle(nativeSidebar, '::before');
@@ -427,8 +548,10 @@ final class Runner: NSObject, WKNavigationDelegate {
     test('peeking sidebar does not receive an upward titlebar cap', ['none', 'normal'].includes(getComputedStyle(document.getElementById('peeking-sidebar'), '::before').content));
     api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: 0});
     test('zero panel opacity clears both sidebar and titlebar cap', alpha(nativeSidebar) === 0 && alpha(nativeSidebar, '::before') === 0);
+    test('zero panel opacity leaves the Dots page and composer transparent', dotsNodes.every(node => alpha(node) === 0) && alpha(document.getElementById('dots-composer')) === 0);
     api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: 1});
     test('full panel opacity applies equally to sidebar and titlebar cap', alpha(nativeSidebar) === 1 && alpha(nativeSidebar, '::before') === 1);
+    test('full panel opacity tints the Dots composer without hiding the page wallpaper', dotsNodes.every(node => alpha(node) === 0) && alpha(document.getElementById('dots-composer')) === 1 && alpha(document.getElementById('dots-disclaimer')) === 0);
     api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: requestedAlpha}); await wait();
     test('native sidebar extension reproduces a 20 CSS pixel band', getComputedStyle(nativeSidebar, '::after').width === '20px');
     test('native sidebar extension no longer inherits panel tint', alpha(nativeSidebar, '::after') === 0);
@@ -512,8 +635,24 @@ final class Runner: NSObject, WKNavigationDelegate {
     documentEditor.blur();
     document.documentElement.className = 'light'; await wait();
     test('follows native light theme', api.status().mode === 'light');
+    test('light mode keeps Dots page and footer decorations transparent', dotsNodes.every(node => alpha(node) === 0) && decorationAbsent(document.getElementById('dots-footer-combined')) && alpha(document.getElementById('dots-disclaimer')) === 0 && getComputedStyle(dotsWrap).borderBottomColor === 'rgba(0, 0, 0, 0)');
+    test('light mode preserves Dots native content tokens and selected composer tint', getComputedStyle(dotsBubble).backgroundColor === dotsNative.bubble && getComputedStyle(dotsReaction).backgroundColor === 'rgb(250, 250, 250)' && getComputedStyle(dotsAttachment).backgroundColor === 'rgb(250, 250, 250)' && Math.abs(alpha(document.getElementById('dots-composer')) - requestedAlpha) < 0.005 && getComputedStyle(document.getElementById('dots-composer')).backgroundColor.startsWith('rgba(255, 255, 255,'));
     document.documentElement.className = 'dark'; await wait();
     test('follows native dark theme', api.status().mode === 'dark');
+    const dotsPlaceholder = document.createComment('Dots fixture route placeholder');
+    dotsPage.replaceWith(dotsPlaceholder); await wait();
+    test('leaving Dots restores detached roots to their original marker state', !dotsPage.hasAttribute('data-chatgpt-backdrop-surface') && dotsPage.querySelector('#dots-inner-root').getAttribute('data-chatgpt-backdrop-surface') === 'prior-dots' && !dotsPage.querySelector('#dots-inner-pane').hasAttribute('data-chatgpt-backdrop-surface'));
+    const dotsRouteMain = document.getElementById('main');
+    const dotsRoute = dotsNativeClone.cloneNode(true);
+    const dotsRouteLayer = document.querySelector('[data-chatgpt-backdrop-layer]');
+    const dotsRouteImage = dotsRouteLayer.firstElementChild;
+    const dotsRouteImageURL = dotsRouteImage.style.backgroundImage;
+    dotsRouteMain.replaceWith(dotsRoute); await wait();
+    test('SPA navigation into Dots reveals all newly mounted nested surfaces', ['dots-page', 'dots-outer-pane', 'dots-inner-root', 'dots-inner-pane'].every(id => alpha(document.getElementById(id)) === 0));
+    test('SPA navigation into Dots removes newly mounted footer paint', decorationAbsent(document.getElementById('dots-footer-combined')) && alpha(document.getElementById('dots-disclaimer')) === 0 && getComputedStyle(document.getElementById('dots-composer-wrap')).borderBottomColor === 'rgba(0, 0, 0, 0)');
+    test('Dots navigation preserves the existing wallpaper layer and image assignment', document.querySelector('[data-chatgpt-backdrop-layer]') === dotsRouteLayer && dotsRouteLayer.firstElementChild === dotsRouteImage && dotsRouteImage.style.backgroundImage === dotsRouteImageURL);
+    dotsRoute.replaceWith(dotsRouteMain); dotsPlaceholder.replaceWith(dotsPage); await wait();
+    test('SPA navigation out of Dots reveals the regular conversation again', alpha(dotsRouteMain) === 0 && !dotsRoute.hasAttribute('data-chatgpt-backdrop-surface') && dotsRoute.querySelector('#dots-inner-root').getAttribute('data-chatgpt-backdrop-surface') === 'prior-dots');
     const old = document.getElementById('main');
     const replacement = document.createElement('main');
     replacement.id = 'replacement'; replacement.innerHTML = '<p>New SPA route</p>';
@@ -527,6 +666,9 @@ final class Runner: NSObject, WKNavigationDelegate {
     // Reset their exact original attribute state before testing engine cleanup.
     if (nativeSidebarStyle === null) nativeSidebar.removeAttribute('style'); else nativeSidebar.setAttribute('style', nativeSidebarStyle);
     if (nativeFrameStyle === null) nativeFrame.removeAttribute('style'); else nativeFrame.setAttribute('style', nativeFrameStyle);
+    dotsDiagnostic.wrapStyleBeforeCleanup = dotsWrap.getAttribute('style');
+    if (dotsWrapStyle === null) dotsWrap.removeAttribute('style'); else dotsWrap.setAttribute('style', dotsWrapStyle);
+    dotsDiagnostic.wrapStyleAfterCleanup = dotsWrap.getAttribute('style');
     api.restore();
     const restoredHTML = document.documentElement.outerHTML;
     let restoreDifferenceIndex = 0;
@@ -540,6 +682,7 @@ final class Runner: NSObject, WKNavigationDelegate {
       afterHTML: restoredHTML === baseline ? null : restoredHTML
     };
     test('restores exact original document', restoredHTML === baseline);
+    test('restore returns Dots native page footer and border paint', dotsNodes.every(node => getComputedStyle(node).backgroundColor === dotsNative.rootBackground) && !decorationAbsent(document.getElementById('dots-footer-combined')) && getComputedStyle(document.getElementById('dots-disclaimer')).backgroundColor === dotsNative.rootBackground && getComputedStyle(dotsWrap).borderBottomColor === dotsNative.rootBackground && getComputedStyle(dotsWrap).borderBottomWidth === dotsNative.borderWidth);
     test('restores pre-existing marker attributes', document.documentElement.getAttribute('data-chatgpt-backdrop') === 'prior-root' && old.getAttribute('data-chatgpt-backdrop-surface') === 'prior-main');
     test('restore is repeatable', api.restore().restored === true);
     const restoredDocument = document.documentElement.outerHTML;
@@ -593,6 +736,6 @@ final class Runner: NSObject, WKNavigationDelegate {
       document.getElementById('root').style.visibility = 'hidden';
       scrollTo(0, 0); await wait();
     }
-    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
+    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, dotsDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
     """#
 }
