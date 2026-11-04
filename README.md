@@ -6,6 +6,10 @@ An original, unofficial Mac utility for image backgrounds in the ChatGPT desktop
 
 Choose a local image, adjust its shade, blur, panel opacity and position, then restore the original appearance whenever you want.
 
+## Version 1.1.6 — Dots header fade
+
+Removes the separate decorative gradient below the Dots toolbar in ChatGPT build 26.1027.61615. The header buttons, profile controls and anchor positioning retain their native appearance and behavior. Restore Original returns the native gradient.
+
 ## Version 1.1.5 — combined panel coverage
 
 Combines bottom-edge and Work-mode panel opacity fixes with Dots backgrounds and multiwindow support. The updated styling engine replaces earlier loaded versions when applying a background.

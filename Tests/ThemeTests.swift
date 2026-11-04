@@ -174,6 +174,16 @@ final class Runner: NSObject, WKNavigationDelegate {
         #dots-footer ._background_fixture{position:absolute;inset:0;pointer-events:none}
         #dots-disclaimer-above{position:relative}
         #standalone-messaging,#dots-attachments-viewer{display:none}
+        /* Dots portals its profile header and a separate 24-spacing-unit
+           floating fade into the app layout, outside the messaging subtree. */
+        #dots-header-host{--spacing:4px;--color-surface:rgb(24,24,27);position:fixed;left:250px;top:44px;width:200px;height:100px}
+        #dots-header-host .contents{display:contents}
+        ._floatingHeader_fixture{position:absolute;left:0;top:0;z-index:20;width:100%;height:calc(var(--spacing,4px) * 24);pointer-events:none;background-image:linear-gradient(to bottom,var(--color-surface,rgb(24,24,27)),transparent)}
+        [data-app-shell-page-surface=true] ._floatingHeader_fixture{background-image:linear-gradient(to bottom,var(--color-background-primary),color-mix(in srgb,var(--color-background-primary) 82%,transparent) 10%,color-mix(in srgb,var(--color-background-primary) 48%,transparent) 30%,color-mix(in srgb,var(--color-background-primary) 12%,transparent) 60%,transparent)}
+        #dots-header-profile{position:absolute;left:0;top:0;height:28px;z-index:21;pointer-events:auto}
+        #dots-header-action{position:absolute;right:4px;top:0;width:40px;height:28px;z-index:21;pointer-events:auto;background:rgb(55,56,57)}
+        #dots-header-anchor{position:absolute;left:0;top:0;width:200px;height:40px;pointer-events:none}
+        #dots-header-negative-cases,#dots-header-unscoped{display:none}
         </style>
         <script>
         \(engine)
@@ -395,7 +405,37 @@ final class Runner: NSObject, WKNavigationDelegate {
       const host = document.getElementById(hostID);
       for (const id of ['environment-actions', 'work-utility-wrapper', 'work-summary']) cloneWorkSurface(document.getElementById(id), prefix, host);
     }
+    const dotsHeaderHost = document.createElement('div');
+    dotsHeaderHost.id = 'dots-header-host'; dotsHeaderHost.setAttribute('data-app-shell-main-content-layout', '');
+    dotsHeaderHost.innerHTML = `
+      <div class="invisible contents" style="visibility:visible">
+        <div id="dots-header-portal-fade" class="pointer-events-none _floatingHeader_fixture" aria-hidden="true" style="position-anchor: --orbit-messaging-header-fixture"></div>
+        <header id="dots-header-profile" class="_header_fixture">Dots profile</header>
+        <button id="dots-header-action" type="button" onclick="window.dotsHeaderClicks=(window.dotsHeaderClicks||0)+1">More</button>
+      </div>
+      <div id="dots-header-anchor" aria-hidden="true" style="anchor-name: --orbit-messaging-header-fixture"></div>
+      <div id="dots-header-negative-cases">
+        <div id="dots-header-nonempty" class="_floatingHeader_fixture" aria-hidden="true" style="position-anchor: --orbit-messaging-header-fixture"><button type="button">Preserved controls</button></div>
+        <div id="dots-header-other-anchor" class="_floatingHeader_fixture" aria-hidden="true" style="position-anchor: --unrelated-header-fixture"></div>
+        <div id="dots-header-no-anchor" class="_floatingHeader_fixture" aria-hidden="true"></div>
+        <div id="dots-header-not-hidden" class="_floatingHeader_fixture" style="position-anchor: --orbit-messaging-header-fixture"></div>
+        <div role="dialog"><div id="dots-header-dialog" class="_floatingHeader_fixture" aria-hidden="true" style="position-anchor: --orbit-messaging-header-fixture"></div></div>
+        <div role="menu"><div id="dots-header-menu" class="_floatingHeader_fixture" aria-hidden="true" style="position-anchor: --orbit-messaging-header-fixture"></div></div>
+      </div>`;
+    const dotsHeaderOutside = document.createElement('div');
+    dotsHeaderOutside.id = 'dots-header-unscoped'; dotsHeaderOutside.className = '_floatingHeader_fixture'; dotsHeaderOutside.setAttribute('aria-hidden', 'true');
+    dotsHeaderOutside.setAttribute('style', 'position-anchor: --orbit-messaging-header-fixture');
+    document.getElementById('root').append(dotsHeaderHost, dotsHeaderOutside);
     const baseline = document.documentElement.outerHTML;
+    const dotsHeaderFade = document.getElementById('dots-header-portal-fade');
+    const dotsHeaderAction = document.getElementById('dots-header-action');
+    const dotsHeaderAnchor = document.getElementById('dots-header-anchor');
+    const dotsHeaderGeometry = node => {
+      const style = getComputedStyle(node); const box = node.getBoundingClientRect();
+      return {x: box.x, y: box.y, width: box.width, height: box.height, position: style.position, zIndex: style.zIndex, pointerEvents: style.pointerEvents, visibility: style.visibility};
+    };
+    const dotsHeaderNative = {fade: dotsHeaderGeometry(dotsHeaderFade), action: dotsHeaderGeometry(dotsHeaderAction), anchor: dotsHeaderGeometry(dotsHeaderAnchor), fadeImage: getComputedStyle(dotsHeaderFade).backgroundImage, actionBackground: getComputedStyle(dotsHeaderAction).backgroundColor, anchorStyle: dotsHeaderAnchor.getAttribute('style'), fadeStyle: dotsHeaderFade.getAttribute('style')};
+    test('native portaled Dots header fade reproduces a 96 pixel gradient', dotsHeaderNative.fade.height === 96 && dotsHeaderNative.fadeImage.includes('linear-gradient'));
     const dotsPage = document.getElementById('dots-page');
     const dotsNativeClone = dotsPage.cloneNode(true);
     const dotsNodes = ['dots-page', 'dots-outer-pane', 'dots-inner-root', 'dots-inner-pane'].map(id => document.getElementById(id));
@@ -529,6 +569,26 @@ final class Runner: NSObject, WKNavigationDelegate {
     test('reapply owns exactly one style and layer', document.querySelectorAll('[data-chatgpt-backdrop-layer]').length === 1 && document.querySelectorAll('[data-chatgpt-backdrop-style]').length === 1);
     const requestedAlpha = 0.1866135817307692;
     api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: requestedAlpha}); await wait();
+    test('portaled Dots header fade outside the messaging subtree no longer paints', !dotsPage.contains(dotsHeaderFade) && decorationAbsent(dotsHeaderFade));
+    test('Dots header fade retains native geometry and anchor metadata', JSON.stringify(dotsHeaderGeometry(dotsHeaderFade)) === JSON.stringify(dotsHeaderNative.fade) && dotsHeaderFade.getAttribute('style') === dotsHeaderNative.fadeStyle && dotsHeaderFade.getAttribute('aria-hidden') === 'true');
+    test('portaled Dots profile and action controls keep their native appearance and geometry', JSON.stringify(dotsHeaderGeometry(dotsHeaderAction)) === JSON.stringify(dotsHeaderNative.action) && getComputedStyle(dotsHeaderAction).backgroundColor === dotsHeaderNative.actionBackground && getComputedStyle(document.getElementById('dots-header-profile')).visibility === 'visible');
+    const dotsHeaderActionBox = dotsHeaderAction.getBoundingClientRect();
+    test('portaled Dots action remains reachable by pointer hit testing', document.elementFromPoint(dotsHeaderActionBox.x + dotsHeaderActionBox.width / 2, dotsHeaderActionBox.y + dotsHeaderActionBox.height / 2) === dotsHeaderAction);
+    dotsHeaderAction.click();
+    test('portaled Dots action handler remains functional', window.dotsHeaderClicks === 1);
+    test('Dots header anchor marker keeps its native size and style', JSON.stringify(dotsHeaderGeometry(dotsHeaderAnchor)) === JSON.stringify(dotsHeaderNative.anchor) && dotsHeaderAnchor.getAttribute('style') === dotsHeaderNative.anchorStyle);
+    test('nonempty Dots header decoration with controls keeps its native gradient', getComputedStyle(document.getElementById('dots-header-nonempty')).backgroundImage === dotsHeaderNative.fadeImage && getComputedStyle(document.querySelector('#dots-header-nonempty button')).display !== 'none');
+    test('unrelated header anchors unmarked layers and out-of-layout gradients are preserved', ['dots-header-other-anchor', 'dots-header-no-anchor', 'dots-header-not-hidden', 'dots-header-unscoped'].every(id => getComputedStyle(document.getElementById(id)).backgroundImage === dotsHeaderNative.fadeImage));
+    test('matching Dots header gradients in protected dialogs and menus are preserved', ['dots-header-dialog', 'dots-header-menu'].every(id => getComputedStyle(document.getElementById(id)).backgroundImage === dotsHeaderNative.fadeImage));
+    const dotsHeaderLayer = document.querySelector('[data-chatgpt-backdrop-layer]');
+    const dotsHeaderImage = dotsHeaderLayer.firstElementChild;
+    const dotsHeaderImageURL = dotsHeaderImage.style.backgroundImage;
+    const dotsHeaderReplacement = dotsHeaderFade.cloneNode(true);
+    dotsHeaderFade.replaceWith(dotsHeaderReplacement); await wait();
+    test('a newly portaled Dots header fade is cleared after SPA mounting', decorationAbsent(dotsHeaderReplacement));
+    test('Dots header portal replacement preserves the existing wallpaper layer and image assignment', document.querySelector('[data-chatgpt-backdrop-layer]') === dotsHeaderLayer && dotsHeaderLayer.firstElementChild === dotsHeaderImage && dotsHeaderImage.style.backgroundImage === dotsHeaderImageURL);
+    dotsHeaderReplacement.replaceWith(dotsHeaderFade); await wait();
+    const dotsHeaderDiagnostic = {native: dotsHeaderNative, activeImage: getComputedStyle(dotsHeaderFade).backgroundImage, activeGeometry: dotsHeaderGeometry(dotsHeaderFade)};
     for (const [index, name] of ['environment pill', 'attached work utility rail', 'summary island'].entries()) {
       test(name + ' follows requested panel opacity', Math.abs(alpha(workPanels[index]) - requestedAlpha) < 0.005);
     }
@@ -681,10 +741,12 @@ final class Runner: NSObject, WKNavigationDelegate {
     test('peeking sidebar does not receive an upward titlebar cap', ['none', 'normal'].includes(getComputedStyle(document.getElementById('peeking-sidebar'), '::before').content));
     api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: 0});
     test('zero panel opacity clears both sidebar and titlebar cap', alpha(nativeSidebar) === 0 && alpha(nativeSidebar, '::before') === 0);
+    test('zero panel opacity does not restore the portaled Dots header shadow', decorationAbsent(dotsHeaderFade));
     test('zero panel opacity remains transparent through the bottom edge', alpha(bottomSidebar) === 0 && Math.abs(bottomGap()) < 0.5);
     test('zero panel opacity leaves the Dots page and composer transparent', dotsNodes.every(node => alpha(node) === 0) && alpha(document.getElementById('dots-composer')) === 0);
     api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: 1});
     test('full panel opacity applies equally to sidebar and titlebar cap', alpha(nativeSidebar) === 1 && alpha(nativeSidebar, '::before') === 1);
+    test('full panel opacity does not restore the portaled Dots header shadow', decorationAbsent(dotsHeaderFade));
     test('full panel opacity covers the bottom edge without another paint layer', alpha(bottomSidebar) === 1 && Math.abs(bottomGap()) < 0.5);
     test('full panel opacity tints the Dots composer without hiding the page wallpaper', dotsNodes.every(node => alpha(node) === 0) && alpha(document.getElementById('dots-composer')) === 1 && alpha(document.getElementById('dots-disclaimer')) === 0);
     api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: requestedAlpha}); await wait();
@@ -770,6 +832,7 @@ final class Runner: NSObject, WKNavigationDelegate {
     documentEditor.blur();
     document.documentElement.className = 'light'; await wait();
     test('follows native light theme', api.status().mode === 'light');
+    test('light mode keeps the portaled Dots header fade transparent', decorationAbsent(dotsHeaderFade));
     test('light theme work panels use white at the requested opacity', [...workPanels, dynamicSummary].every(node => {
       const channels = getComputedStyle(node).backgroundColor.match(/[\d.]+/g).map(Number);
       return channels.slice(0, 3).every(value => value === 255) && Math.abs(alpha(node) - requestedAlpha) < 0.005;
@@ -827,6 +890,7 @@ final class Runner: NSObject, WKNavigationDelegate {
       afterHTML: restoredHTML === baseline ? null : restoredHTML
     };
     test('restores exact original document', restoredHTML === baseline);
+    test('restore returns the native Dots header gradient and its original geometry', getComputedStyle(dotsHeaderFade).backgroundImage === dotsHeaderNative.fadeImage && JSON.stringify(dotsHeaderGeometry(dotsHeaderFade)) === JSON.stringify(dotsHeaderNative.fade));
     test('restore returns Dots native page footer and border paint', dotsNodes.every(node => getComputedStyle(node).backgroundColor === dotsNative.rootBackground) && !decorationAbsent(document.getElementById('dots-footer-combined')) && getComputedStyle(document.getElementById('dots-disclaimer')).backgroundColor === dotsNative.rootBackground && getComputedStyle(dotsWrap).borderBottomColor === dotsNative.rootBackground && getComputedStyle(dotsWrap).borderBottomWidth === dotsNative.borderWidth);
     test('restores pre-existing marker attributes', document.documentElement.getAttribute('data-chatgpt-backdrop') === 'prior-root' && old.getAttribute('data-chatgpt-backdrop-surface') === 'prior-main');
     test('restore is repeatable', api.restore().restored === true);
@@ -881,6 +945,6 @@ final class Runner: NSObject, WKNavigationDelegate {
       document.getElementById('root').style.visibility = 'hidden';
       scrollTo(0, 0); await wait();
     }
-    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, bottomGapDiagnostic, workSurfaceDiagnostic, dotsDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
+    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, bottomGapDiagnostic, workSurfaceDiagnostic, dotsDiagnostic, dotsHeaderDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
     """#
 }
