@@ -6,6 +6,10 @@ An original, unofficial Mac utility for image backgrounds in the ChatGPT desktop
 
 Choose a local image, adjust its shade, blur, panel opacity and position, then restore the original appearance whenever you want.
 
+## Version 1.2.6 — updated ChatGPT styling compatibility
+
+Supports the CSS module names introduced in ChatGPT 26.1029.61003 while retaining the earlier naming format. This restores top-shadow removal, footer fades, composer opacity, the sidebar hairline fix and the Dots header decoration override after the app update. Apply with the updated Backdrop app to replace the previously loaded styling engine.
+
 ## Version 1.2.5 — Dots reading modes
 
 Applies Sheet, Cards and Focus to supported Dots conversations as well as regular chats. Reading Opacity and Reading Blur control the reading treatment without stacking the native assistant text backing underneath it. User-message Accent colors, reactions, attachments and controls retain their native styling. None restores the prior appearance while keeping the wallpaper; Restore Original removes the background and all reading treatments.
@@ -111,7 +115,7 @@ The folder includes `Twilight Hills.png` and a ready-to-import `Twilight Hills.c
 ## Compatibility and behavior
 
 - The build targets **Apple Silicon Macs running macOS 14 or later**.
-- Designed for `/Applications/ChatGPT.app`, bundle ID `com.openai.codex`, using the interface structure of local build `26.1023.51421`.
+- Designed for `/Applications/ChatGPT.app`, bundle ID `com.openai.codex`, with styling fixtures for the module naming formats used through local build `26.1029.61003`.
 - Targets primary chat windows at `app://-/index.html`, including **Open in New Window** chats. It excludes embedded browsers, other origins, the separate `detached-window.html` browser shell, and avatar, dictation, Spotlight and hotkey utility windows. Injection and restoration retain the same application-origin and top-frame guards.
 - Does not modify ChatGPT's installed files, login information, or system protections.
 - Keep Backdrop open while using the background. When ChatGPT exits, the injection ends; import your saved theme and apply it again next time.

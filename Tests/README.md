@@ -14,6 +14,8 @@ node --test .github/scripts/codex-gate.test.cjs # Automatic merge policy
 
 These tests do not connect to, restart, or modify ChatGPT. The mock server uses a temporary local port; the scripts remove their temporary build output and fixtures.
 
+The theme script runs the full suite twice: once with legacy `_Name_hash` module classes, then with the `Name-hash` classes used by ChatGPT 26.1029.61003. Run just the current format with `ThemeTests /absolute/path/to/theme.js --native-modules` when using a separately compiled harness. Only test-authored fixture tokens are converted; the engine is injected unchanged.
+
 Dots reading-mode cases model its separate embedded messaging viewport, transcript column and assistant text parts. They cover native-backplate replacement, independent reading controls, mode transitions, scrolling and new messages while preserving user colors and interactive content. Unsupported or protected messaging views remain outside the reading treatment.
 
 Native Accent regressions use the app's shared composer action-color tokens and class names. The fixture compares native send/stop controls, focus outlines and user-message fills across light/dark appearance and live Accent changes, including Dots-specific action colors, Panel Opacity limits, reading modes and restoration. Backdrop must style the composer surface without replacing those shared action tokens.
@@ -27,6 +29,8 @@ The multiwindow suite passed **117/117 checks**, including settings staged while
 The suite also checks temporary discovery failures, partial application failures, lost registration replies, restore after reconnect, explicit reset after a confirmed app restart, and strict exclusion of browser, utility, untrusted-origin and non-page targets. Apply and Restore share the same document guard so a target that navigates between discovery and cleanup is not styled as a chat window.
 
 ## Recorded release validation
+
+The final 1.2.6 compatibility fix passed **438/438 checks in each class format** (876 total), including the latest Settings background/visibility and Dots reading-mode coverage from main. The earlier compatibility fixture against 1.2.2 reproduces **36 failures** (274/310 pass), including the top gradient, page shadow, footer decorations, composer opacity, sidebar hairline and Dots header. The fixed suites preserve native Accent colors, reading modes, GIF playback and exact restoration. Guard fixtures retain similarly named components, control-bearing wrappers, dialogs and menus. CI runs both formats sequentially.
 
 The 1.2.4 Settings visibility fix passed **361/361** isolated native WebKit checks. Already mounted Settings layouts and their ancestors automatically pause and resume the actual wallpaper when native visibility, protection or structural attributes change, without Apply, route events or DOM insertion. The same fixture against 1.2.3 reproduces 36 Settings transition failures (**325/361** pass). Checks also preserve the existing decoded image, native cards and controls, and exact restoration; attribute changes after Restore cannot reactivate styling. GIF snapshots retain all three frames before and after control changes, with no settling timeouts. The app builds as 1.2.4 (build 14), its bundled engine matches the tested source and ad hoc signing verifies.
 

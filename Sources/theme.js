@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.5";
+  const VERSION = "1.2.6";
   const GLOBAL = "__chatGPTBackdrop";
   const ROOT_ATTRIBUTE = "data-chatgpt-backdrop";
   const SURFACE_ATTRIBUTE = "data-chatgpt-backdrop-surface";
@@ -562,6 +562,13 @@
     frame = requestAnimationFrame(() => { frame = 0; syncSurfaces(); });
   }
 
+  // ChatGPT's CSS modules use either _Name_hash or Name-hash. In the latter
+  // format require a class-token boundary so related names (for example
+  // FullHeightPageSurface) do not match the decorative component itself.
+  function nativeModuleClass(name) {
+    return `:is([class*="_${name}_"],[class^="${name}-"],[class*=" ${name}-"])`;
+  }
+
   function updateOwnedStyles() {
     if (!config || !layer || !stylesheet) return;
     const root = `html[${ROOT_ATTRIBUTE}="${owner}"]:not([${MUTED_ATTRIBUTE}="${owner}"])`;
@@ -572,11 +579,11 @@
     const dotsTextPart = `${dotsReadingRow} .message-bubble[data-orbit-message-text-part][data-markdown-text-style="assistant-message"]${outsideProtected}${outsideDotsReading}`;
     const dotsMaterial = `${dotsReadingRow} [data-avatar-overlay-material-variant="transcript-message"]:is([data-transcript-role="assistant"],:has(> [data-orbit-message-text-part])):has([data-markdown-text-style="assistant-message"])${outsideProtected}${outsideDotsReading}`;
     const dotsFooter = `.messaging-root.messaging-embedded[${SURFACE_ATTRIBUTE}="${owner}"] .conversation-footer`;
-    const composer = '[class*="_ComposerLayoutRoot_"]:is([data-composer-surface-variant="default"],[data-composer-surface-variant="opaque"],[data-composer-surface-variant="secondary"])';
+    const composer = `${nativeModuleClass("ComposerLayoutRoot")}:is([data-composer-surface-variant="default"],[data-composer-surface-variant="opaque"],[data-composer-surface-variant="secondary"])`;
     const environmentPanel = '[data-in-progress-fixed-content][class~="group/environment-actions"] .bg-surface-elevated-secondary';
     const utilityPanel = '[data-composer-utility-rail].bg-background-composer-action-bar';
     const summaryPanel = '[data-summary-panel-variant].bg-surface-elevated-secondary';
-    const decorativeBackground = 'div[aria-hidden="true"][class*="_background_"]:is([class*="_surface_"],[class*="_fade_"],[class*="_combined_"]):empty';
+    const decorativeBackground = `div[aria-hidden="true"]${nativeModuleClass("background")}:is(${nativeModuleClass("surface")},${nativeModuleClass("fade")},${nativeModuleClass("combined")}):empty`;
     const panel = mode === "light" ? "255,255,255" : "24,24,27";
     const veil = mode === "light" ? "255,255,255" : "0,0,0";
     // Keep the existing decoded image and animation timeline when only the
@@ -634,18 +641,18 @@ ${root} aside.app-shell-left-panel[data-app-shell-left-panel-appearance]:not([da
   background-image: none !important;
 }
 /* The native visual hairline is separate from the functional resize handle. */
-${root} [data-app-shell-page-sidebar="true"] [class*="_MainContentLeftBorder_"]${outsideProtected} {
+${root} [data-app-shell-page-sidebar="true"] ${nativeModuleClass("MainContentLeftBorder")}${outsideProtected} {
   border-left-color: transparent !important;
 }
 /* Dots portals this decorative fade beside its real header controls, outside
    the messaging roots. Keep the portal, anchor geometry and controls intact. */
-${root} [data-app-shell-main-content-layout] div[aria-hidden="true"][class*="_floatingHeader_"][style*="--orbit-messaging-header-"]:empty${outsideProtected} {
+${root} [data-app-shell-main-content-layout] div[aria-hidden="true"]${nativeModuleClass("floatingHeader")}[style*="--orbit-messaging-header-"]:empty${outsideProtected} {
   background-color: transparent !important;
   background-image: none !important;
 }
 /* These are empty, aria-hidden native paint layers. Their containing wrappers
    also hold transcript/controls, so never hide those wrappers themselves. */
-${root} [data-app-shell-main-content-top-fade] div[aria-hidden="true"][class*="_MainContentTopFade_"]:empty${outsideProtected},
+${root} [data-app-shell-main-content-top-fade] div[aria-hidden="true"]${nativeModuleClass("MainContentTopFade")}:empty${outsideProtected},
 ${root} .thread-scroll-container ${decorativeBackground}${outsideProtected},
 ${root} [data-thread-footer-background] ${decorativeBackground}${outsideProtected},
 ${root} [data-thread-scroll-footer="true"] ${decorativeBackground}${outsideProtected},
@@ -671,7 +678,7 @@ ${root} ${dotsFooter} .composer-wrap:not([data-has-composer-surface])${outsidePr
   border-bottom-color: transparent !important;
 }
 /* The page card's native shadow is a separate empty overlay beside the sidebar. */
-${root} [data-app-shell-frame] div[aria-hidden="true"][class*="_PageSurface_"]:empty${outsideProtected} {
+${root} [data-app-shell-frame] div[aria-hidden="true"]${nativeModuleClass("PageSurface")}:empty${outsideProtected} {
   box-shadow: none !important;
 }
 /* User messages can carry the native Accent fill on this element itself. */
@@ -730,7 +737,7 @@ ${root} ${composer}${outsideProtected} {
   --composer-layout-surface-backdrop-filter: none !important;
 }
 ${root} ${composer}:not([data-composer-utility-bar-variant="home"])${outsideProtected},
-${root} ${composer}[data-composer-utility-bar-variant="home"] [class*="_ComposerLayoutBody_"]${outsideProtected} {
+${root} ${composer}[data-composer-utility-bar-variant="home"] ${nativeModuleClass("ComposerLayoutBody")}${outsideProtected} {
   background-color: rgba(${panel},${config.panelOpacity}) !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
