@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.4";
+  const VERSION = "1.2.5";
   const GLOBAL = "__chatGPTBackdrop";
   const ROOT_ATTRIBUTE = "data-chatgpt-backdrop";
   const SURFACE_ATTRIBUTE = "data-chatgpt-backdrop-surface";
@@ -77,6 +77,7 @@
     '[role="menu"]', '[role="listbox"]', "pre", "code", "iframe",
     '[data-testid="settings-modal"]', '[data-settings-page]', settingsPageContent
   ].join(",");
+  const dotsReadingExcluded = '.messaging-attachments,.messaging-root:not(.messaging-embedded),.reply-chain-panel,.reply-chain-transcript';
 
   function number(value, fallback, minimum, maximum) {
     return typeof value === "number" && Number.isFinite(value)
@@ -281,6 +282,37 @@
     });
   }
 
+  function readingRegionCandidates() {
+    const regions = [];
+    for (const column of document.querySelectorAll('[data-thread-user-message-navigation-content]')) {
+      const viewport = column.closest('.thread-scroll-container');
+      if (isReadingStructure(column) && isReadingStructure(viewport)) {
+        regions.push({column, viewport, scope: viewport, context: "thread",
+          cardCandidates: config.readingMode === "cards" ? readingCardCandidates(column) : []});
+      }
+    }
+    // Dots has its own scroll/list hierarchy and can nest two embedded shells.
+    // Discover each native list once, rather than one region for each shell.
+    for (const column of document.querySelectorAll('.messaging-root.messaging-embedded .message-list')) {
+      if (!isReadingStructure(column) || column.closest(dotsReadingExcluded) ||
+          column.parentElement?.closest('.message-list')) continue;
+      const messaging = column.closest('.messaging-root');
+      const scroll = column.closest('.messages-scroll');
+      const viewport = scroll?.closest('.thread-pane');
+      if (!messaging?.classList.contains('messaging-embedded') || !scroll ||
+          !isReadingStructure(viewport) || !messaging.contains(viewport)) continue;
+      const cardCandidates = config.readingMode === "cards" ? [...column.children].filter(node =>
+        isReadingStructure(node) && node.matches('.message-row.assistant') &&
+        [...node.querySelectorAll('[data-orbit-message-text-part],[data-markdown-text-style="assistant-message"],[data-orbit-message-block]')].some(content =>
+          isReadingStructure(content) && !content.closest(dotsReadingExcluded) &&
+          content.closest('.message-list') === column && content.closest('.message-row') === node)) : [];
+      // The pane supplies the full height, including its absolute composer.
+      // Cards still mirror the intermediate messages-scroll clipping below.
+      regions.push({column, viewport, scope: column, context: "dots", cardCandidates});
+    }
+    return regions;
+  }
+
   function readingClipBounds(node, viewport, visible, cache) {
     if (!node || node === viewport) return visible;
     if (cache.has(node)) return cache.get(node);
@@ -370,11 +402,7 @@
     // This native centered wrapper supplies the real chat width. The viewport
     // supplies the vertical extent, including its sticky composer. A single
     // plate avoids stacking a transcript tint with a separate footer tint.
-    for (const column of document.querySelectorAll('[data-thread-user-message-navigation-content]')) {
-      if (!isReadingStructure(column)) continue;
-      const viewport = column.closest('.thread-scroll-container');
-      if (!isReadingStructure(viewport)) continue;
-      const cardCandidates = config.readingMode === "cards" ? readingCardCandidates(column) : [];
+    for (const {column, viewport, scope, context, cardCandidates} of readingRegionCandidates()) {
       candidates.push({column, viewport, targets: cardCandidates});
       if (!isReadingElement(column) || !isReadingElement(viewport)) continue;
       const box = column.getBoundingClientRect(), view = viewport.getBoundingClientRect();
@@ -382,7 +410,7 @@
       const targets = config.readingMode === "cards" ? readingCardTargets(cardCandidates, column) : [column];
       if (!targets.length) continue;
       regions.push({column, viewport, targets});
-      wantedScopes.add(viewport);
+      wantedScopes.add(scope);
       for (const target of targets) {
         wantedTargets.add(target);
         let record = readingPlates.get(target);
@@ -398,18 +426,19 @@
         record.column = column; record.viewport = viewport;
         record.element.setAttribute("data-chatgpt-backdrop-reading-mode", config.readingMode);
         record.element.setAttribute("data-chatgpt-backdrop-reading-kind", config.readingMode === "cards" ? "card" : "column");
+        record.element.setAttribute("data-chatgpt-backdrop-reading-context", context);
       }
     }
     for (const [target, record] of readingPlates) {
       if (!wantedTargets.has(target)) { record.element.remove(); readingPlates.delete(target); }
     }
-    for (const [viewport, previous] of readingScopes) {
-      if (!wantedScopes.has(viewport)) { restoreReadingScope(viewport, previous); readingScopes.delete(viewport); }
+    for (const [scope, previous] of readingScopes) {
+      if (!wantedScopes.has(scope)) { restoreReadingScope(scope, previous); readingScopes.delete(scope); }
     }
-    for (const viewport of wantedScopes) {
-      if (!readingScopes.has(viewport)) readingScopes.set(viewport, viewport.getAttribute(READING_ATTRIBUTE));
+    for (const scope of wantedScopes) {
+      if (!readingScopes.has(scope)) readingScopes.set(scope, scope.getAttribute(READING_ATTRIBUTE));
       const value = owner + ":" + config.readingMode;
-      if (viewport.getAttribute(READING_ATTRIBUTE) !== value) viewport.setAttribute(READING_ATTRIBUTE, value);
+      if (scope.getAttribute(READING_ATTRIBUTE) !== value) scope.setAttribute(READING_ATTRIBUTE, value);
     }
     readingRegions = regions;
     readingCandidates = candidates;
@@ -537,6 +566,11 @@
     if (!config || !layer || !stylesheet) return;
     const root = `html[${ROOT_ATTRIBUTE}="${owner}"]:not([${MUTED_ATTRIBUTE}="${owner}"])`;
     const outsideProtected = `:not(:is(dialog,dialog *,[role=dialog],[role=dialog] *,[role=alertdialog],[role=alertdialog] *,[role=menu],[role=menu] *,[role=listbox],[role=listbox] *,pre,pre *,code,code *,[data-testid=settings-modal],[data-testid=settings-modal] *,[data-settings-page],[data-settings-page] *,${settingsPageContent},${settingsPageContent} *))`;
+    const outsideDotsReading = ":not(:is(.messaging-attachments,.messaging-attachments *,.messaging-root:not(.messaging-embedded),.messaging-root:not(.messaging-embedded) *,.reply-chain-panel,.reply-chain-panel *,.reply-chain-transcript,.reply-chain-transcript *,.message-list .message-list,.message-list .message-list *,[data-orbit-message-block],[data-orbit-message-block] *,[data-option-picker-choice],[data-option-picker-choice] *,[data-transcript-role=user],[data-transcript-role=user] *,button,button *))";
+    const dotsReadingRow = `${root} .message-list:is([${READING_ATTRIBUTE}="${owner}:sheet"],[${READING_ATTRIBUTE}="${owner}:cards"],[${READING_ATTRIBUTE}="${owner}:focus"]) > .message-row.assistant`;
+    const dotsTextBacking = `${dotsReadingRow} .message-surface > .message-bubble:is([data-markdown-text-style="assistant-message"],:has([data-markdown-text-style="assistant-message"]))${outsideProtected}${outsideDotsReading}`;
+    const dotsTextPart = `${dotsReadingRow} .message-bubble[data-orbit-message-text-part][data-markdown-text-style="assistant-message"]${outsideProtected}${outsideDotsReading}`;
+    const dotsMaterial = `${dotsReadingRow} [data-avatar-overlay-material-variant="transcript-message"]:is([data-transcript-role="assistant"],:has(> [data-orbit-message-text-part])):has([data-markdown-text-style="assistant-message"])${outsideProtected}${outsideDotsReading}`;
     const dotsFooter = `.messaging-root.messaging-embedded[${SURFACE_ATTRIBUTE}="${owner}"] .conversation-footer`;
     const composer = '[class*="_ComposerLayoutRoot_"]:is([data-composer-surface-variant="default"],[data-composer-surface-variant="opaque"],[data-composer-surface-variant="secondary"])';
     const environmentPanel = '[data-in-progress-fixed-content][class~="group/environment-actions"] .bg-surface-elevated-secondary';
@@ -669,6 +703,23 @@ ${root} [${READING_ATTRIBUTE}="${owner}:sheet"] [data-message-author-role="assis
 ${root} [${READING_ATTRIBUTE}="${owner}:cards"] [data-message-author-role="assistant"]${outsideProtected},
 ${root} [${READING_ATTRIBUTE}="${owner}:focus"] [data-message-author-role="assistant"]${outsideProtected} {
   background-color: transparent !important;
+}
+/* Dots uses native text bubbles/material instead of the standard assistant
+   wrapper. Replace only that verified text backing while a reading treatment
+   is active, so its native tint/glass does not stack with Reading Opacity.
+   Rich blocks, option buttons, user bubbles and unrelated rooms stay native. */
+${dotsTextBacking},
+${dotsTextPart},
+${dotsMaterial},
+${dotsMaterial}::before {
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+${dotsMaterial} {
+  -owl-native-material: none !important;
 }
 /* Native normal composers paint their root, except on Home where only their
    body paints. Use the local surface token, leaving shared action-color tokens

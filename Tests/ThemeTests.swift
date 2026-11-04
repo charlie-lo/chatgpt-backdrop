@@ -166,6 +166,21 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
         .conversation-viewport{display:flex;flex:1;min-height:0}
         .messages-scroll{flex:1;overflow-y:auto;min-height:0}
         .message-list{min-height:420px}
+        /* Dots' native transcript has row-level roles, a scrolling parent,
+           and separate simple/split assistant text paint surfaces. */
+        #dots-message-list{display:flex;flex:1 0 auto;flex-direction:column;gap:4px;padding-top:20px;position:relative}
+        #dots-message-list>.message-row{display:flex;align-items:flex-end;margin-bottom:12px;padding-inline:20px}
+        #dots-message-list>.message-row.assistant{align-items:flex-start}
+        #dots-message-list>.message-row.self{justify-content:flex-end}
+        .message-bubble-wrap{max-width:88%;min-width:0;position:relative}
+        .message-row.assistant>.message-bubble-wrap{width:100%;max-width:100%}
+        .message-surface>.message-bubble{background:rgba(170,178,190,.28);border-radius:22px;padding:12px}
+        .message-surface>.message-bubble:has([data-orbit-message-parts]){background:transparent;padding:0}
+        [data-orbit-message-text-part].message-bubble{background:rgba(170,178,190,.28);border-radius:22px;padding:12px}
+        [data-avatar-overlay-material-variant=transcript-message]{position:relative;isolation:isolate;border-radius:22px;background:rgba(190,192,198,.3);box-shadow:0 2px 12px rgba(0,0,0,.2);backdrop-filter:blur(8px)}
+        [data-avatar-overlay-material-variant=transcript-message]:not(:has([data-orbit-message-parts]))::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;background:rgba(32,32,32,.9)}
+        .message-bubble[data-option-picker-choice]{background:rgb(50,75,105);border-radius:18px;padding:8px;color:white}
+        #dots-reading-tail{height:180px;flex:none}
         .message-row.self .message-bubble{background:rgb(113,146,184);border-radius:18px;padding:8px}
         .dots-reaction,.dots-attachment{background:var(--color-background-primary);border:1px solid rgb(90,90,90)}
         .conversation-footer{z-index:2;pointer-events:none;inset-inline:0;position:absolute;bottom:0}
@@ -288,9 +303,13 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
           <section id="bottom-layout" class="bottom-layout-fixture" data-app-shell-frame data-app-shell-page-surface="true" data-app-shell-page-sidebar="true"><div id="bottom-workspace" data-app-shell-workspace-row><aside id="bottom-sidebar" class="app-shell-left-panel" data-app-shell-left-panel-appearance="translucent"><nav id="bottom-navigation"><button id="bottom-control" type="button" onclick="bottomControlClicks++">Bottom control</button></nav></aside><div id="bottom-main" data-app-shell-main-surface="default">Main pane</div></div></section>
           <div id="dots-page" class="messaging-root messaging-embedded"><main id="dots-outer-pane" class="thread-pane">
             <div id="dots-inner-root" class="messaging-root messaging-embedded" data-chatgpt-backdrop-surface="prior-dots"><div id="dots-inner-pane" class="thread-pane flex-1">
-              <div class="conversation-viewport"><div id="dots-scroll" class="messages-scroll" data-role="messages-scroll"><div class="message-list">
+              <div class="conversation-viewport"><div id="dots-scroll" class="messages-scroll" data-role="messages-scroll"><div id="dots-message-list" class="message-list" data-chatgpt-backdrop-reading="prior-dots-reading">
                 <div class="message-row self"><div id="dots-bubble" class="message-bubble">Native blue message</div></div>
+                <div id="dots-reading-simple-row" class="message-row assistant"><div class="message-bubble-wrap"><div class="message-surface"><div id="dots-reading-simple" class="message-bubble"><div data-markdown-text-style="assistant-message"><p id="dots-reading-text">A normal assistant reply without split-part markers.</p><a id="dots-reading-link" href="#dots-reading-link" onclick="event.preventDefault();window.dotsReadingLinkClicks=(window.dotsReadingLinkClicks||0)+1">Reference</a></div></div></div><button id="dots-reading-reaction" class="dots-reaction" type="button" onclick="window.dotsReadingReactionClicks=(window.dotsReadingReactionClicks||0)+1">React</button></div></div>
+                <div id="dots-reading-rich-row" class="message-row assistant"><div class="message-bubble-wrap"><div class="message-surface"><div class="message-bubble"><div data-orbit-message-parts><div id="dots-reading-material" data-avatar-overlay-material-variant="transcript-message" data-transcript-role="assistant"><div id="dots-reading-part" class="message-bubble" data-orbit-message-text-part data-markdown-text-style="assistant-message">One text part in a response with a rich result.</div></div><div id="dots-reading-attachment" class="dots-attachment" data-orbit-message-block="attachment">Native attachment result</div><button id="dots-reading-choice" class="message-bubble" data-option-picker-choice type="button">Keep this native choice</button><pre id="dots-reading-code"><code>const dotsReading = true;</code></pre></div></div></div></div></div>
+                <div class="message-row"><div class="message-bubble-wrap"><div class="message-surface"><div id="dots-reading-human" class="message-bubble">An incoming human message stays native.</div></div></div></div>
                 <button id="dots-reaction" class="dots-reaction" type="button">Reaction</button><div id="dots-attachment" class="dots-attachment">Attachment card</div>
+                <div id="dots-reading-tail" aria-hidden="true"></div>
               </div></div></div>
             </div></div>
             <div id="dots-footer" class="conversation-footer">
@@ -413,8 +432,8 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
             const left = Math.max(spacer.left, view.left, 0), right = Math.min(spacer.right, view.right, innerWidth);
             const top = Math.max(spacer.top, view.top, 44), bottom = Math.min(spacer.bottom, view.bottom - 80, innerHeight - 20);
             if (right - left < 64 || bottom - top < 64) throw new Error('The empty reading region is too small for a native blur sample.');
-            const plate = document.querySelector('[data-chatgpt-backdrop-reading-layer]'), r = plate?.getBoundingClientRect(), s = plate && getComputedStyle(plate);
-            return {x: (left + right - 64) / 2, y: (top + bottom - 64) / 2, width: 64, height: 64, plateCount: globalThis.__chatGPTBackdrop.status().readingSurfaceCount,
+            const plate = document.querySelector('[data-chatgpt-backdrop-reading-layer]:not([data-chatgpt-backdrop-reading-context="dots"])'), r = plate?.getBoundingClientRect(), s = plate && getComputedStyle(plate);
+            return {x: (left + right - 64) / 2, y: (top + bottom - 64) / 2, width: 64, height: 64, plateCount: [...document.querySelectorAll('[data-chatgpt-backdrop-reading-layer]:not([data-chatgpt-backdrop-reading-context="dots"])')].filter(node => getComputedStyle(node).display !== 'none').length,
               plateRect: r && {left:r.left,top:r.top,width:r.width,height:r.height}, blur:s?.backdropFilter || s?.webkitBackdropFilter,
               clip:s?.clipPath, mode:globalThis.__chatGPTBackdrop.status().readingMode, parentContain:plate?.parentElement && getComputedStyle(plate.parentElement).contain};
             """, arguments: ["patternImage": "data:image/png;base64," + Self.patternImageBase64], in: nil, contentWorld: .page)
@@ -432,7 +451,7 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
             let afterStyle = try await webView.callAsyncJavaScript("""
             globalThis.__chatGPTBackdrop.apply({imageData: patternImage, opacity: 0, blur: 0, panelOpacity: 0, readingMode: 'sheet', readingOpacity: 0, readingBlur: 16});
             await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame);
-            const plate=document.querySelector('[data-chatgpt-backdrop-reading-layer]'),r=plate.getBoundingClientRect(),s=getComputedStyle(plate);
+            const plate=document.querySelector('[data-chatgpt-backdrop-reading-layer]:not([data-chatgpt-backdrop-reading-context="dots"])'),r=plate.getBoundingClientRect(),s=getComputedStyle(plate);
             return {rect:{left:r.left,top:r.top,width:r.width,height:r.height},blur:s.backdropFilter||s.webkitBackdropFilter,clip:s.clipPath,mode:globalThis.__chatGPTBackdrop.status().readingMode};
             """, arguments: ["patternImage": "data:image/png;base64," + Self.patternImageBase64], in: nil, contentWorld: .page)
             diagnostic["afterStyle"] = afterStyle
@@ -1357,7 +1376,8 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     const originalWindowScroll = {x: scrollX, y: scrollY};
     const baseReadingConfig = {imageData: fixtureImage, opacity: 0, blur: 0, panelOpacity: requestedAlpha};
     const settleReading = async () => { await wait(); await wait(); };
-    const plates = () => [...document.querySelectorAll('[data-chatgpt-backdrop-reading-layer]')];
+    const allReadingPlates = () => [...document.querySelectorAll('[data-chatgpt-backdrop-reading-layer]')];
+    const plates = () => allReadingPlates().filter(node => node.getAttribute('data-chatgpt-backdrop-reading-context') !== 'dots');
     const visiblePlates = () => plates().filter(node => getComputedStyle(node).display !== 'none');
     const clippedRect = node => {
       const rect = node.getBoundingClientRect();
@@ -1395,7 +1415,7 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
       const all = plates(); const visible = visiblePlates(); const expected = readingMode === 'cards' ? 4 : 1;
       readingDiagnostic.modes.push({mode: readingMode, total: all.length, visible: visible.length,
         rects: visible.map(node => ({...clippedRect(node), alpha: alpha(node), blur: backdropBlur(node), mask: maskImage(node)}))});
-      test(readingMode + ' reports its selected mode and actual visible surface count', api.status().readingMode === readingMode && api.status().readingSurfaceCount === visible.length);
+      test(readingMode + ' reports its selected mode and actual visible surface count', api.status().readingMode === readingMode && api.status().readingSurfaceCount === allReadingPlates().filter(node => getComputedStyle(node).display !== 'none').length);
       test(readingMode + ' paints the expected independent surface count', all.length === expected && visible.length === expected);
       test(readingMode + ' plates use independent reading opacity', visible.every(node => Math.abs(alpha(node) - 0.64) < 0.005));
       test(readingMode + ' leaves the surrounding sidebar opacity unchanged', Math.abs(alpha(nativeSidebar) - requestedAlpha) < 0.005);
@@ -1490,23 +1510,23 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     const collapseClass = collapseWrapper.getAttribute('class'); collapseWrapper.classList.add('reading-test-collapsed'); await settleReading();
     test('collapsed overflow groups do not leave ghost Cards behind', collapseWrapper.getBoundingClientRect().height === 0 && document.getElementById('reading-tool').getBoundingClientRect().height > 0 && visiblePlates().length === 3);
     if (collapseClass === null) collapseWrapper.removeAttribute('class'); else collapseWrapper.setAttribute('class', collapseClass); await settleReading();
-    test('expanding a native overflow group automatically restores one card', visiblePlates().length === 4 && api.status().readingSurfaceCount === 4);
+    test('expanding a native overflow group automatically restores one card', visiblePlates().length === 4 && api.status().readingMode === 'cards');
     const contentsUnit = document.getElementById('reading-assistant'); const contentsClass = contentsUnit.getAttribute('class');
     contentsUnit.classList.add('reading-test-contents'); await settleReading();
     test('display-contents search wrappers fall back to one visible assistant card', contentsUnit.getBoundingClientRect().width === 0 && document.getElementById('reading-assistant-inner').getBoundingClientRect().width > 0 && visiblePlates().length === 4);
     if (contentsClass === null) contentsUnit.removeAttribute('class'); else contentsUnit.setAttribute('class', contentsClass); await settleReading();
     api.apply({...baseReadingConfig, readingMode: 'sheet', readingOpacity: 0.64, readingBlur: 9}); await settleReading();
     readingViewport.style.visibility = 'hidden'; await settleReading();
-    test('CSS-hidden conversation panes leave no ghost reading plate or scope', readingViewport.getBoundingClientRect().width > 0 && visiblePlates().length === 0 && api.status().readingSurfaceCount === 0 && !readingViewport.hasAttribute('data-chatgpt-backdrop-reading'));
+    test('CSS-hidden conversation panes leave no ghost reading plate or scope', readingViewport.getBoundingClientRect().width > 0 && visiblePlates().length === 0 && !readingViewport.hasAttribute('data-chatgpt-backdrop-reading'));
     if (readingViewportStyle === null) readingViewport.removeAttribute('style'); else readingViewport.setAttribute('style', readingViewportStyle);
     await settleReading();
-    test('restoring pane visibility automatically reactivates exactly one reading plate', visiblePlates().length === 1 && api.status().readingSurfaceCount === 1);
+    test('restoring pane visibility automatically reactivates exactly one reading plate', visiblePlates().length === 1 && api.status().readingSurfaceCount >= 1);
     const readingMain = document.getElementById('main'); const readingMainClass = readingMain.getAttribute('class');
     readingMain.classList.add('reading-test-hidden'); await settleReading();
     test('transparent native ancestor panes do not leave a reading overlay behind', getComputedStyle(readingMain).opacity === '0' && readingViewport.getBoundingClientRect().width > 0 && visiblePlates().length === 0 && !readingViewport.hasAttribute('data-chatgpt-backdrop-reading'));
     if (readingMainClass === null) readingMain.removeAttribute('class'); else readingMain.setAttribute('class', readingMainClass);
     await settleReading();
-    test('restoring an ancestor class automatically reactivates one reading plate', visiblePlates().length === 1 && api.status().readingSurfaceCount === 1);
+    test('restoring an ancestor class automatically reactivates one reading plate', visiblePlates().length === 1 && api.status().readingSurfaceCount >= 1);
     api.apply({...baseReadingConfig, readingMode: 'sheet', readingOpacity: 4, readingBlur: 99}); await settleReading();
     test('reading opacity and blur clamp independently to their limits', visiblePlates().length === 1 && alpha(visiblePlates()[0]) === 1 && /blur\(24px\)/.test(backdropBlur(visiblePlates()[0])) && Math.abs(alpha(nativeSidebar) - requestedAlpha) < 0.005);
     api.apply({...baseReadingConfig, readingMode: 'sheet', readingOpacity: -5, readingBlur: -5}); await settleReading();
@@ -1522,6 +1542,147 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     readingViewport.scrollTop = originalReadingScroll; scrollTo(originalWindowScroll.x, originalWindowScroll.y);
     api.apply(baseReadingConfig); await settleReading();
     test('None exactly restores the prior active appearance after reading controls', document.documentElement.outerHTML === readingNoneBaseline);
+    // Dots uses native row roles and a separate scroll/list/pane hierarchy.
+    // Keep its checks independent of the simultaneously mounted Work fixture.
+    const dotsReadingBaseline = document.documentElement.outerHTML;
+    const dotsReadingLayerBaseline = document.querySelector('[data-chatgpt-backdrop-layer]').outerHTML;
+    const dotsReadingStyleBaseline = document.querySelector('[data-chatgpt-backdrop-style]').outerHTML;
+    const dotsReadingAttributeNodes = [nativeSidebar, nativeFrame, bottomFrame, bottomSidebar, dotsPage, dotsWrap];
+    const dotsReadingAttributeOrder = dotsReadingAttributeNodes.map(node => ({id: node.id, attributes: [...node.attributes].map(attribute => [attribute.name, attribute.value])}));
+    const dotsPageStyle = dotsPage.getAttribute('style');
+    const dotsReadingClass = document.documentElement.getAttribute('class');
+    const dotsList = document.getElementById('dots-message-list');
+    const dotsPane = document.getElementById('dots-inner-pane');
+    const dotsSimpleRow = document.getElementById('dots-reading-simple-row');
+    const dotsSimple = document.getElementById('dots-reading-simple');
+    const dotsPart = document.getElementById('dots-reading-part');
+    const dotsMaterial = document.getElementById('dots-reading-material');
+    const dotsText = document.getElementById('dots-reading-text');
+    const dotsScopeBefore = dotsList.getAttribute('data-chatgpt-backdrop-reading');
+    const dotsScrollBefore = dotsScroll.scrollTop;
+    const dotsPlateNodes = () => allReadingPlates().filter(node => node.getAttribute('data-chatgpt-backdrop-reading-context') === 'dots');
+    const visibleDotsPlates = () => dotsPlateNodes().filter(node => getComputedStyle(node).display !== 'none');
+    const paint = node => {
+      const style = getComputedStyle(node);
+      return {background: style.backgroundColor, color: style.color, radius: style.borderRadius, shadow: style.boxShadow, filter: style.filter, blur: backdropBlur(node), opacity: style.opacity, nativeMaterial: style.getPropertyValue('--avatar-overlay-native-material')};
+    };
+    const nestedMaterialAttachment = document.createElement('div');
+    nestedMaterialAttachment.setAttribute('data-orbit-message-block', 'attachment');
+    nestedMaterialAttachment.innerHTML = '<div id="dots-nested-native-material" data-avatar-overlay-material-variant="transcript-message">A native Material attachment inside an assistant group.</div>';
+    dotsMaterial.append(nestedMaterialAttachment);
+    const nestedMaterial = nestedMaterialAttachment.firstElementChild;
+    const nestedMaterialNativePaint = paint(nestedMaterial);
+    const dotsNativeContentPaint = () => JSON.stringify(['dots-bubble', 'dots-reading-human', 'dots-reading-reaction', 'dots-reading-attachment', 'dots-reading-choice', 'dots-reading-code', 'accent-dots-send'].map(id => paint(document.getElementById(id))));
+    Object.assign(dotsPage.style, {position: 'fixed', left: '160px', top: '64px', width: '720px', height: '520px'});
+    const negativeDots = [];
+    for (const kind of ['standalone', 'attachments', 'reply', 'dialog']) {
+      const host = document.createElement('div');
+      Object.assign(host.style, {position: 'fixed', left: '-9000px', top: '0', width: '400px', height: '300px'});
+      if (kind === 'reply') host.className = 'reply-chain-panel';
+      if (kind === 'dialog') host.setAttribute('role', 'dialog');
+      const copy = cloneWorkSurface(document.getElementById('dots-inner-root'), 'reading-negative-' + kind + '-', host);
+      if (kind === 'standalone') copy.classList.remove('messaging-embedded');
+      if (kind === 'attachments') copy.classList.add('messaging-attachments');
+      document.getElementById('root').append(host); negativeDots.push({host, copy});
+    }
+    const dotsReadingConfig = {...baseReadingConfig, imageData: fixtureGIF};
+    let dotsWallpaper = null, dotsWallpaperURL = null;
+    for (const scheme of ['dark', 'light']) {
+      document.documentElement.className = scheme;
+      api.apply({...dotsReadingConfig, readingMode: 'none'}); dotsScroll.scrollTop = 0; await settleReading();
+      const nativeContent = dotsNativeContentPaint();
+      const nativeBacking = [paint(dotsSimple), paint(dotsPart), paint(dotsMaterial), alpha(dotsMaterial, '::before')];
+      test(scheme + ' Dots fixture reproduces plain split and Material assistant backing', alpha(dotsSimple) > 0 && !dotsSimple.hasAttribute('data-orbit-message-text-part') && alpha(dotsPart) > 0 && alpha(dotsMaterial, '::before') > 0 && /blur\(8px\)/.test(backdropBlur(dotsMaterial)));
+      const wallpaper = document.querySelector('[data-chatgpt-backdrop-layer]').firstElementChild;
+      dotsWallpaper = wallpaper; dotsWallpaperURL = wallpaper.style.backgroundImage;
+      for (const readingMode of ['sheet', 'cards', 'focus']) {
+        api.apply({...dotsReadingConfig, readingMode, readingOpacity: 0.37, readingBlur: 6}); await settleReading();
+        const visible = visibleDotsPlates(); const expected = readingMode === 'cards' ? 2 : 1;
+        test(scheme + ' Dots ' + readingMode + ' discovers one region through nested embedded roots', dotsPlateNodes().length === expected && visible.length === expected && dotsList.getAttribute('data-chatgpt-backdrop-reading') !== dotsScopeBefore);
+        test(scheme + ' Dots ' + readingMode + ' applies independent opacity and local blur without dimming text', visible.length === expected && visible.every(node => Math.abs(alpha(node) - 0.37) < 0.005 && /blur\(6px\)/.test(backdropBlur(node)) && getComputedStyle(node).pointerEvents === 'none') && getComputedStyle(dotsText).opacity === '1' && getComputedStyle(dotsText).filter === 'none' && Math.abs(alpha(nativeSidebar) - requestedAlpha) < 0.005);
+        test(scheme + ' Dots ' + readingMode + ' removes all native assistant text backing rather than stacking tint', alpha(dotsSimple) === 0 && alpha(dotsPart) === 0 && alpha(dotsMaterial) === 0 && alpha(dotsMaterial, '::before') === 0 && backdropBlur(dotsMaterial) === 'none');
+        test(scheme + ' Dots ' + readingMode + ' preserves user human reaction attachment code choice and Accent paint', dotsNativeContentPaint() === nativeContent);
+        const pane = dotsPane.getBoundingClientRect(); const column = dotsList.getBoundingClientRect();
+        const paneClip = {left: Math.max(0, pane.left), right: Math.min(innerWidth, pane.right), top: Math.max(0, pane.top), bottom: Math.min(innerHeight, pane.bottom)};
+        if (readingMode === 'cards') {
+          test(scheme + ' Dots Cards paint one rounded response group each and exclude user messages', visible.length === 2 && visible.every(node => node.getAttribute('data-chatgpt-backdrop-reading-kind') === 'card' && parseFloat(getComputedStyle(node).borderRadius) >= 12 && inside(clippedRect(node), paneClip)) && visible.every(node => !intersects(clippedRect(node), dotsBubble.getBoundingClientRect())));
+        } else {
+          const rect = visible[0]?.getBoundingClientRect();
+          test(scheme + ' Dots ' + readingMode + ' spans its real transcript column and the composer overlay', !!rect && rect.width >= Math.min(column.width, pane.width) - 1 && inside(clippedRect(visible[0]), paneClip) && Math.abs(clippedRect(visible[0]).bottom - paneClip.bottom) < 1 && (readingMode === 'focus' ? /linear-gradient\(/.test(maskImage(visible[0])) && getComputedStyle(visible[0]).borderRadius === '0px' : maskImage(visible[0]) === 'none'));
+        }
+        api.apply({...dotsReadingConfig, readingMode, readingOpacity: 1, readingBlur: 0}); await settleReading();
+        test(scheme + ' Dots ' + readingMode + ' updates live to full reading opacity without replacing plates', visibleDotsPlates().length === expected && visibleDotsPlates().every((node, index) => node === visible[index] && alpha(node) === 1 && backdropBlur(node) === 'none'));
+        api.apply({...dotsReadingConfig, readingMode, readingOpacity: 0, readingBlur: 16}); await settleReading();
+        test(scheme + ' Dots ' + readingMode + ' accepts zero tint with independent blur and restores native backing in None', visibleDotsPlates().length === expected && visibleDotsPlates().every(node => alpha(node) === 0 && /blur\(16px\)/.test(backdropBlur(node))) && alpha(dotsSimple) === 0);
+        api.apply({...dotsReadingConfig, readingMode: 'none'}); await settleReading();
+        test(scheme + ' Dots None removes treatment and exactly restores native text surfaces', dotsPlateNodes().length === 0 && dotsList.getAttribute('data-chatgpt-backdrop-reading') === dotsScopeBefore && JSON.stringify([paint(dotsSimple), paint(dotsPart), paint(dotsMaterial), alpha(dotsMaterial, '::before')]) === JSON.stringify(nativeBacking));
+      }
+    }
+    document.documentElement.className = 'dark';
+    api.apply({...dotsReadingConfig, readingMode: 'cards', readingOpacity: 0.61, readingBlur: 3}); await settleReading();
+    test('Dots reading keeps nested rich-block Material paint and inherited native material settings', JSON.stringify(paint(nestedMaterial)) === JSON.stringify(nestedMaterialNativePaint) && alpha(nestedMaterial) > 0);
+    const dotsPlainMarkdown = dotsSimple.querySelector('[data-markdown-text-style="assistant-message"]');
+    dotsPlainMarkdown.removeAttribute('data-markdown-text-style'); dotsSimple.setAttribute('data-markdown-text-style', 'assistant-message'); await settleReading();
+    test('Dots reading recognizes plain assistant markdown when its style marker is on the bubble itself', dotsPlateNodes().length === 2 && alpha(dotsSimple) === 0);
+    dotsSimple.removeAttribute('data-markdown-text-style'); dotsPlainMarkdown.setAttribute('data-markdown-text-style', 'assistant-message'); await settleReading();
+    test('Dots reading discovery excludes standalone attachment reply-chain and protected transcripts', negativeDots.every(({copy}) => copy.querySelector('.message-list').getAttribute('data-chatgpt-backdrop-reading') === dotsScopeBefore && alpha(copy.querySelector('.message-surface > .message-bubble')) > 0));
+    const reaction = document.getElementById('dots-reading-reaction'); const link = document.getElementById('dots-reading-link');
+    const reactionBefore = window.dotsReadingReactionClicks || 0, linkBefore = window.dotsReadingLinkClicks || 0;
+    reaction.click(); link.click();
+    const selection = getSelection(); const range = document.createRange(); range.selectNodeContents(dotsText); selection.removeAllRanges(); selection.addRange(range);
+    test('Dots reading leaves reactions links and native text selection functional', window.dotsReadingReactionClicks === reactionBefore + 1 && window.dotsReadingLinkClicks === linkBefore + 1 && selection.toString() === dotsText.textContent); selection.removeAllRanges();
+    const incomingDots = document.createElement('div'); incomingDots.className = 'message-row assistant';
+    incomingDots.innerHTML = '<div class="message-bubble-wrap"><div class="message-surface"><div class="message-bubble"><div data-markdown-text-style="assistant-message">A newly streamed Dots response.</div></div></div></div>';
+    dotsList.prepend(incomingDots); await settleReading();
+    test('Dots Cards discover newly mounted plain assistant responses without duplicate text-part cards', dotsPlateNodes().length === 3 && visibleDotsPlates().filter(node => intersects(clippedRect(node), incomingDots.getBoundingClientRect())).length === 1 && alpha(incomingDots.querySelector('.message-bubble')) === 0);
+    const streamingCard = visibleDotsPlates().find(node => intersects(clippedRect(node), incomingDots.getBoundingClientRect()));
+    const streamingHeight = parseFloat(streamingCard?.style.height || '0');
+    incomingDots.querySelector('[data-markdown-text-style]').firstChild.appendData(' Streaming response content.'.repeat(60)); await settleReading();
+    test('Dots Cards track streamed text growth through native response resizing', !!streamingCard && parseFloat(streamingCard.style.height) > streamingHeight && dotsPlateNodes().includes(streamingCard));
+    dotsScroll.scrollTop = 95; await settleReading();
+    const scrollBox = dotsScroll.getBoundingClientRect();
+    const scrollClip = {left: Math.max(0, scrollBox.left), right: Math.min(innerWidth, scrollBox.right), top: Math.max(0, scrollBox.top), bottom: Math.min(innerHeight, scrollBox.bottom)};
+    test('Dots Cards follow native scrolling and clip at the intermediate messages viewport', dotsScroll.scrollTop > 0 && visibleDotsPlates().length > 0 && visibleDotsPlates().every(node => inside(clippedRect(node), scrollClip)));
+    incomingDots.remove(); dotsScroll.scrollTop = 0; await settleReading();
+    test('Dots Cards remove the detached streamed response treatment', dotsPlateNodes().length === 2);
+    const simpleRowStyle = dotsSimpleRow.getAttribute('style'); dotsSimpleRow.style.display = 'none'; await settleReading();
+    test('hiding a native Dots assistant response removes its card without reapplying settings', dotsPlateNodes().length === 1);
+    if (simpleRowStyle === null) dotsSimpleRow.removeAttribute('style'); else dotsSimpleRow.setAttribute('style', simpleRowStyle); await settleReading();
+    test('showing a native Dots assistant response restores exactly one card', dotsPlateNodes().length === 2);
+    api.apply({...dotsReadingConfig, readingMode: 'sheet', readingOpacity: 0.61, readingBlur: 3}); await settleReading();
+    const visibleDotsStyle = dotsPage.getAttribute('style'); dotsPage.style.visibility = 'hidden'; await settleReading();
+    test('hidden Dots panes leave no ghost reading region or owned scope', dotsPlateNodes().length === 0 && dotsList.getAttribute('data-chatgpt-backdrop-reading') === dotsScopeBefore);
+    dotsPage.setAttribute('style', visibleDotsStyle); await settleReading();
+    const dotsAway = document.createElement('main'); dotsAway.textContent = 'Another native page';
+    dotsPage.replaceWith(dotsAway); await settleReading();
+    test('navigation away from Dots restores detached list scope and removes its plates', dotsPlateNodes().length === 0 && dotsList.getAttribute('data-chatgpt-backdrop-reading') === dotsScopeBefore);
+    dotsAway.replaceWith(dotsPage); await settleReading();
+    test('navigation back to Dots inherits the active reading treatment without resetting the GIF', visibleDotsPlates().length === 1 && document.querySelector('[data-chatgpt-backdrop-layer]').firstElementChild === dotsWallpaper && dotsWallpaper.style.backgroundImage === dotsWallpaperURL);
+    for (const {host} of negativeDots) host.remove();
+    nestedMaterialAttachment.remove();
+    if (dotsPageStyle === null) dotsPage.removeAttribute('style'); else dotsPage.setAttribute('style', dotsPageStyle);
+    if (dotsReadingClass === null) document.documentElement.removeAttribute('class'); else document.documentElement.setAttribute('class', dotsReadingClass);
+    dotsScroll.scrollTop = dotsScrollBefore;
+    // None must preserve the exact active document. A full Restore/Apply cycle
+    // legitimately appends fresh owned marker attributes after fixture styles,
+    // so test that separate lifecycle against native restoration below.
+    api.apply(baseReadingConfig); await settleReading();
+    const dotsReadingAfter = document.documentElement.outerHTML;
+    let dotsReadingDifference = 0;
+    while (dotsReadingDifference < Math.min(dotsReadingBaseline.length, dotsReadingAfter.length) && dotsReadingBaseline[dotsReadingDifference] === dotsReadingAfter[dotsReadingDifference]) dotsReadingDifference++;
+    const dotsReadingDiagnostic = {exact: dotsReadingAfter === dotsReadingBaseline, firstDifferenceIndex: dotsReadingDifference,
+      beforeContext: dotsReadingBaseline.slice(Math.max(0, dotsReadingDifference - 180), dotsReadingDifference + 220),
+      afterContext: dotsReadingAfter.slice(Math.max(0, dotsReadingDifference - 180), dotsReadingDifference + 220),
+      ownedLayerExact: document.querySelector('[data-chatgpt-backdrop-layer]').outerHTML === dotsReadingLayerBaseline,
+      ownedStyleExact: document.querySelector('[data-chatgpt-backdrop-style]').outerHTML === dotsReadingStyleBaseline,
+      attributesBefore: dotsReadingAttributeOrder,
+      attributesAfter: dotsReadingAttributeNodes.map(node => ({id: node.id, attributes: [...node.attributes].map(attribute => [attribute.name, attribute.value])}))};
+    test('Dots None leaves the prior active document exactly unchanged', dotsReadingAfter === dotsReadingBaseline);
+    api.apply({...baseReadingConfig, readingMode: 'sheet', readingOpacity: 0.61, readingBlur: 3}); await settleReading();
+    const dotsReadingWasActiveBeforeRestore = visibleDotsPlates().length === 1 && dotsList.getAttribute('data-chatgpt-backdrop-reading') !== dotsScopeBefore;
+    api.restore();
+    test('Restore Original directly removes active Dots reading state and restores native assistant material', dotsReadingWasActiveBeforeRestore && dotsPlateNodes().length === 0 && dotsList.getAttribute('data-chatgpt-backdrop-reading') === dotsScopeBefore && alpha(dotsSimple) > 0 && alpha(dotsMaterial, '::before') > 0 && /blur\(8px\)/.test(backdropBlur(dotsMaterial)));
+    api.apply(baseReadingConfig); await settleReading();
     const old = document.getElementById('main');
     const replacement = document.createElement('main');
     replacement.id = 'replacement'; replacement.innerHTML = '<p>New SPA route</p>';
@@ -1544,7 +1705,7 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     scrollTo(0, Math.max(0, readingViewport.getBoundingClientRect().top + scrollY - 64)); await settleReading();
     test('direct Restore fixture begins with an active reading treatment', api.status().readingMode === 'focus' && visiblePlates().length === 1 && readingViewport.hasAttribute('data-chatgpt-backdrop-reading'));
     api.restore();
-    test('direct Restore removes active reading layers and owned scope markers', plates().length === 0 && !readingViewport.hasAttribute('data-chatgpt-backdrop-reading') && readingColumn.getAttribute('data-chatgpt-backdrop-reading') === 'prior-reading');
+    test('direct Restore removes active reading layers and owned scope markers', allReadingPlates().length === 0 && !readingViewport.hasAttribute('data-chatgpt-backdrop-reading') && readingColumn.getAttribute('data-chatgpt-backdrop-reading') === 'prior-reading');
     test('Restore preserves native Accent controls bubbles and original preference attributes', accentMatchesNative() && JSON.stringify(accentPaint('accent-thread-send')) === JSON.stringify(initialAccentPaint) && document.documentElement.getAttribute('class') === nativeAccentClass && document.documentElement.getAttribute('data-fixture-accent') === nativeAccentAttribute);
     const restoredHTML = document.documentElement.outerHTML;
     let restoreDifferenceIndex = 0;
@@ -1619,6 +1780,6 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
       document.getElementById('root').style.visibility = 'hidden';
       scrollTo(0, 0); await wait();
     }
-    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, bottomGapDiagnostic, workSurfaceDiagnostic, dotsDiagnostic, dotsHeaderDiagnostic, settingsDiagnostic, readingDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
+    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, bottomGapDiagnostic, workSurfaceDiagnostic, dotsDiagnostic, dotsHeaderDiagnostic, settingsDiagnostic, readingDiagnostic, dotsReadingDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
     """#
 }
