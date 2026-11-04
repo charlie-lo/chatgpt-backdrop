@@ -14,6 +14,8 @@ node --test .github/scripts/codex-gate.test.cjs # Automatic merge policy
 
 These tests do not connect to, restart, or modify ChatGPT. The mock server uses a temporary local port; the scripts remove their temporary build output and fixtures.
 
+Dots reading-mode cases model its separate embedded messaging viewport, transcript column and assistant text parts. They cover native-backplate replacement, independent reading controls, mode transitions, scrolling and new messages while preserving user colors and interactive content. Unsupported or protected messaging views remain outside the reading treatment.
+
 Native Accent regressions use the app's shared composer action-color tokens and class names. The fixture compares native send/stop controls, focus outlines and user-message fills across light/dark appearance and live Accent changes, including Dots-specific action colors, Panel Opacity limits, reading modes and restoration. Backdrop must style the composer surface without replacing those shared action tokens.
 
 ## Multiwindow controller tests

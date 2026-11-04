@@ -6,6 +6,10 @@ An original, unofficial Mac utility for image backgrounds in the ChatGPT desktop
 
 Choose a local image, adjust its shade, blur, panel opacity and position, then restore the original appearance whenever you want.
 
+## Version 1.2.5 — Dots reading modes
+
+Applies Sheet, Cards and Focus to supported Dots conversations as well as regular chats. Reading Opacity and Reading Blur control the reading treatment without stacking the native assistant text backing underneath it. User-message Accent colors, reactions, attachments and controls retain their native styling. None restores the prior appearance while keeping the wallpaper; Restore Original removes the background and all reading treatments.
+
 ## Version 1.2.4 — Settings backgrounds
 
 The main Settings page now shows the selected wallpaper around its cards. Cards, controls, previews and the action footer keep their native appearance. Hiding or revealing an already mounted Settings page updates the wallpaper automatically. Embedded settings and protected dialogs retain their original styling; Restore Original restores the page background.
