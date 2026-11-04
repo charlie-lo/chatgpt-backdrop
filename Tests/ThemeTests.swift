@@ -201,6 +201,21 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
         #dots-header-action{position:absolute;right:4px;top:0;width:40px;height:28px;z-index:21;pointer-events:auto;background:rgb(55,56,57)}
         #dots-header-anchor{position:absolute;left:0;top:0;width:200px;height:40px;pointer-events:none}
         #dots-header-negative-cases,#dots-header-unscoped{display:none}
+        /* Native full-page settings layout paints its outer electron surface.
+           Cards own separate fills, and the scroll/group wrappers do not. */
+        #settings-host{position:fixed;right:16px;top:80px;width:260px;height:190px;z-index:2;--fixture-settings-surface:rgb(24,24,24);--fixture-settings-card:rgb(34,34,34)}
+        :root.light #settings-host{--fixture-settings-surface:rgb(250,250,250);--fixture-settings-card:rgb(242,242,242)}
+        .settings-layout-fixture{display:flex;flex-direction:column;height:100%;min-height:0;background-color:var(--fixture-settings-surface,rgb(24,24,24))}
+        .settings-scroll-fixture{flex:1;min-height:0;overflow-y:auto;scrollbar-gutter:stable}
+        .settings-group-fixture{display:flex;flex-direction:column;min-height:300px}
+        .settings-card-fixture{border:1px solid rgb(80,80,80);border-radius:16px;padding:10px;background:var(--fixture-settings-card,rgb(34,34,34))}
+        .settings-card-fixture button,.settings-card-fixture input{color:inherit;background:rgb(55,56,57);border:1px solid rgb(90,90,90)}
+        .settings-preview-fixture{background:rgb(29,30,31);border-radius:6px}
+        .settings-footer-fixture{height:24px;flex:none;background:var(--fixture-settings-surface,rgb(24,24,24))}
+        .settings-negative-fixtures{display:none}
+        .settings-visibility-hidden{visibility:hidden}
+        .settings-display-none{display:none!important}
+
         /* Native utility classes consume semantic tokens inherited from the
            selected Accent; composer panel paint must not replace these tokens. */
         html.dark{--fixture-accent-background:rgb(139,179,255);--fixture-accent-foreground:rgb(16,27,45);--fixture-user-background:rgb(43,67,109)}
@@ -669,6 +684,53 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     dotsHeaderOutside.id = 'dots-header-unscoped'; dotsHeaderOutside.className = '_floatingHeader_fixture'; dotsHeaderOutside.setAttribute('aria-hidden', 'true');
     dotsHeaderOutside.setAttribute('style', 'position-anchor: --orbit-messaging-header-fixture');
     document.getElementById('root').append(dotsHeaderHost, dotsHeaderOutside);
+    const settingsHost = document.createElement('div');
+    settingsHost.id = 'settings-host'; settingsHost.setAttribute('data-app-shell-main-surface', 'default');
+    settingsHost.innerHTML = `<div id="settings-layout" class="settings-layout-fixture flex h-full min-h-0 flex-col electron:overflow-hidden electron:bg-surface windows:rounded-tl-lg">
+      <div id="settings-scroll" class="settings-scroll-fixture flex-1 scrollbar-stable overflow-y-auto"><div id="settings-group" class="settings-group-fixture group/settings mx-auto flex w-full flex-col" data-density="default">
+        <header>General</header><div class="flex flex-col"><section id="settings-card" class="settings-card-fixture"><button id="settings-toggle" role="switch" type="button" aria-checked="false" onclick="window.settingsControlClicks=(window.settingsControlClicks||0)+1">Native setting</button><input id="settings-input" type="text" value="Original setting"><div>Native card text</div><article id="settings-preview" class="settings-preview-fixture" data-message-author-role="assistant">Native settings preview</article></section></div>
+      </div></div><footer id="settings-footer" class="settings-footer-fixture">Native action footer</footer></div>`;
+    const settingsAncestor = document.createElement('div'); settingsAncestor.id = 'settings-ancestor';
+    settingsAncestor.append(settingsHost); document.getElementById('root').append(settingsAncestor);
+    const settingsLayout = document.getElementById('settings-layout');
+    const settingsScroll = document.getElementById('settings-scroll');
+    const settingsGroup = document.getElementById('settings-group');
+    const settingsCard = document.getElementById('settings-card');
+    const settingsToggle = document.getElementById('settings-toggle');
+    const settingsInput = document.getElementById('settings-input');
+    const settingsNativeClone = settingsLayout.cloneNode(true);
+    const settingsPreview = document.getElementById('settings-preview');
+    const settingsFooter = document.getElementById('settings-footer');
+    const settingsNegatives = document.createElement('div'); settingsNegatives.className = 'settings-negative-fixtures';
+    const settingsNegativeRoots = [];
+    const settingsCloneWithoutIDs = () => { const copy = settingsNativeClone.cloneNode(true); copy.removeAttribute('id'); copy.querySelectorAll('[id]').forEach(node => node.removeAttribute('id')); return copy; };
+    for (const variant of ['embedded', 'missing-density', 'wrong-nesting', 'outside-app-surface', 'dialog', 'menu', 'settings-modal']) {
+      const copy = settingsCloneWithoutIDs();
+      const wrapper = document.createElement('div');
+      if (variant !== 'outside-app-surface') wrapper.setAttribute('data-app-shell-main-surface', 'default');
+      if (variant === 'embedded') copy.classList.remove('electron:bg-surface');
+      if (variant === 'missing-density') copy.querySelector('[data-density]').removeAttribute('data-density');
+      if (variant === 'wrong-nesting') { const group = copy.querySelector('[data-density]'); const extra = document.createElement('div'); group.replaceWith(extra); extra.append(group); }
+      if (variant === 'dialog' || variant === 'menu') wrapper.setAttribute('role', variant);
+      if (variant === 'settings-modal') wrapper.setAttribute('data-testid', 'settings-modal');
+      wrapper.append(copy); settingsNegatives.append(wrapper); settingsNegativeRoots.push({variant, node: copy});
+    }
+    document.getElementById('root').append(settingsNegatives);
+    const settingsNative = {
+      layoutBackground: getComputedStyle(settingsLayout).backgroundColor,
+      cardBackground: getComputedStyle(settingsCard).backgroundColor,
+      cardBorder: getComputedStyle(settingsCard).border,
+      cardRadius: getComputedStyle(settingsCard).borderRadius,
+      buttonBackground: getComputedStyle(settingsToggle).backgroundColor,
+      inputBackground: getComputedStyle(settingsInput).backgroundColor,
+      previewBackground: getComputedStyle(settingsPreview).backgroundColor,
+      footerBackground: getComputedStyle(settingsFooter).backgroundColor,
+      scrollOverflow: getComputedStyle(settingsScroll).overflowY,
+      scrollHeight: settingsScroll.scrollHeight,
+      scrollClientHeight: settingsScroll.clientHeight
+    };
+    test('native settings fixture reproduces its independent opaque page fill', settingsNative.layoutBackground === 'rgb(24, 24, 24)' && settingsNative.cardBackground === 'rgb(34, 34, 34)');
+
     const accentButtons = prefix => `<button id="${prefix}-send" type="button" class="fixture-native-accent-control bg-composer-primary text-composer-primary">↑</button><button id="${prefix}-stop" type="button" class="fixture-native-accent-control bg-composer-primary text-composer-primary">■</button><button id="${prefix}-disabled" type="button" disabled class="fixture-native-accent-control bg-composer-primary text-composer-primary">↑</button>`;
     document.getElementById('thread-composer').insertAdjacentHTML('beforeend', accentButtons('accent-thread'));
     document.getElementById('home-composer-body').insertAdjacentHTML('beforeend', accentButtons('accent-home'));
@@ -836,6 +898,120 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     test('reapply owns exactly one style and layer', document.querySelectorAll('[data-chatgpt-backdrop-layer]').length === 1 && document.querySelectorAll('[data-chatgpt-backdrop-style]').length === 1);
     const requestedAlpha = 0.1866135817307692;
     api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: requestedAlpha}); await wait();
+    test('full settings page reveals the wallpaper through its outer layout', alpha(settingsLayout) === 0 && getComputedStyle(settingsLayout).backgroundImage === 'none' && alpha(settingsScroll) === 0 && alpha(settingsGroup) === 0);
+    test('settings cards retain native fill border and corner geometry', getComputedStyle(settingsCard).backgroundColor === settingsNative.cardBackground && getComputedStyle(settingsCard).border === settingsNative.cardBorder && getComputedStyle(settingsCard).borderRadius === settingsNative.cardRadius);
+    test('settings controls retain native paint state and values', getComputedStyle(settingsToggle).backgroundColor === settingsNative.buttonBackground && getComputedStyle(settingsInput).backgroundColor === settingsNative.inputBackground && settingsToggle.getAttribute('aria-checked') === 'false' && settingsInput.value === 'Original setting');
+    test('settings preview and action footer retain their native fills', getComputedStyle(settingsPreview).backgroundColor === settingsNative.previewBackground && getComputedStyle(settingsFooter).backgroundColor === settingsNative.footerBackground && !settingsPreview.hasAttribute('data-chatgpt-backdrop-surface'));
+    test('settings content group remains outside structural transparency markers', !settingsGroup.hasAttribute('data-chatgpt-backdrop-surface') && !settingsCard.hasAttribute('data-chatgpt-backdrop-surface'));
+    settingsScroll.scrollTop = 48;
+    test('settings scrolling retains native overflow dimensions and behavior', getComputedStyle(settingsScroll).overflowY === settingsNative.scrollOverflow && settingsNative.scrollOverflow === 'auto' && settingsScroll.scrollTop === 48 && settingsScroll.scrollHeight === settingsNative.scrollHeight && settingsScroll.clientHeight === settingsNative.scrollClientHeight);
+    settingsScroll.scrollTop = 0;
+    const settingsButtonBox = settingsToggle.getBoundingClientRect();
+    test('settings switch remains reachable by pointer hit testing', document.elementFromPoint(settingsButtonBox.left + settingsButtonBox.width / 2, settingsButtonBox.top + settingsButtonBox.height / 2) === settingsToggle);
+    settingsToggle.click(); test('settings control handler remains functional', window.settingsControlClicks === 1);
+    if (window.webkit?.messageHandlers?.fixtureFocus) await window.webkit.messageHandlers.fixtureFocus.postMessage({});
+    settingsInput.focus(); await wait();
+    test('settings text input receives focus without changing its native value', document.activeElement === settingsInput && settingsInput.matches(':focus') && settingsInput.value === 'Original setting');
+    settingsInput.blur();
+    settingsGroup.setAttribute('data-density', 'compact'); await wait();
+    test('compact settings retain wallpaper and native card fills', alpha(settingsLayout) === 0 && getComputedStyle(settingsCard).backgroundColor === settingsNative.cardBackground);
+    settingsGroup.setAttribute('data-density', 'default');
+    test('embedded malformed and out-of-scope settings layouts retain their own background', settingsNegativeRoots.filter(item => ['embedded', 'missing-density', 'wrong-nesting', 'outside-app-surface'].includes(item.variant)).every(item => alpha(item.node) === 1 && !item.node.hasAttribute('data-chatgpt-backdrop-surface')));
+    test('settings layouts inside dialogs menus and settings modals remain protected', settingsNegativeRoots.filter(item => ['dialog', 'menu', 'settings-modal'].includes(item.variant)).every(item => alpha(item.node) === 1 && !item.node.hasAttribute('data-chatgpt-backdrop-surface')));
+    const settingsWallpaperLayer = document.querySelector('[data-chatgpt-backdrop-layer]');
+    const settingsWallpaperImage = settingsWallpaperLayer.firstElementChild;
+    const settingsWallpaperURL = settingsWallpaperImage.style.backgroundImage;
+    const settingsRouteCopy = settingsNativeClone.cloneNode(true);
+    settingsLayout.replaceWith(settingsRouteCopy); await wait();
+    test('SPA navigation into settings clears newly mounted page fill and preserves cards', alpha(settingsRouteCopy) === 0 && getComputedStyle(settingsRouteCopy.querySelector('.settings-card-fixture')).backgroundColor === settingsNative.cardBackground);
+    test('leaving a settings page restores its detached structural markers', !settingsLayout.hasAttribute('data-chatgpt-backdrop-surface') && !settingsScroll.hasAttribute('data-chatgpt-backdrop-surface'));
+    settingsRouteCopy.replaceWith(settingsLayout); await wait();
+    test('settings route changes preserve the decoded wallpaper layer and image', document.querySelector('[data-chatgpt-backdrop-layer]') === settingsWallpaperLayer && settingsWallpaperLayer.firstElementChild === settingsWallpaperImage && settingsWallpaperImage.style.backgroundImage === settingsWallpaperURL && !settingsRouteCopy.hasAttribute('data-chatgpt-backdrop-surface'));
+    const settingsPathDiagnostic = {initialURL: location.href};
+    const settingsHistoryState = history.state;
+    const settingsOriginalURL = location.href;
+    const settingsPlaceholder = document.createComment('Settings route placeholder');
+    const setFixturePath = async path => { history.replaceState(settingsHistoryState, '', path); dispatchEvent(new PopStateEvent('popstate')); await wait(); };
+    try {
+      await setFixturePath('/settings/general');
+      settingsPathDiagnostic.settingsURL = location.href;
+      test('a recognized full settings route keeps the wallpaper active', api.status().mode !== 'paused' && getComputedStyle(settingsWallpaperLayer).display !== 'none' && alpha(settingsLayout) === 0);
+      api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: requestedAlpha}); await wait();
+      test('reapplying while native settings is open preserves its wallpaper and cards', api.status().mode !== 'paused' && alpha(settingsLayout) === 0 && getComputedStyle(settingsCard).backgroundColor === settingsNative.cardBackground);
+      settingsLayout.replaceWith(settingsPlaceholder); await wait();
+      test('an unknown settings layout retains the original paused protection', api.status().mode === 'paused' && getComputedStyle(settingsWallpaperLayer).display === 'none');
+      settingsPlaceholder.replaceWith(settingsLayout); await wait();
+      test('mounting a recognized settings page resumes the wallpaper without Apply', api.status().mode !== 'paused' && getComputedStyle(settingsWallpaperLayer).display !== 'none' && alpha(settingsLayout) === 0);
+      // Mount a cached layout while hidden, then reveal it using only an
+      // attribute update. Neither reveal nor later transitions may rely on
+      // Apply, a route event, or inserting/removing a DOM element.
+      settingsLayout.hidden = true;
+      settingsLayout.replaceWith(settingsPlaceholder); await wait();
+      settingsPlaceholder.replaceWith(settingsLayout); await wait();
+      test('mounting a cached hidden settings page keeps its wallpaper paused', api.status().mode === 'paused' && getComputedStyle(settingsWallpaperLayer).display === 'none');
+      settingsLayout.removeAttribute('hidden'); await wait();
+      test('revealing an already mounted settings layout resumes wallpaper without Apply', api.status().mode !== 'paused' && getComputedStyle(settingsWallpaperLayer).display !== 'none' && alpha(settingsLayout) === 0);
+      const cachedSettingsCases = [];
+      const settingsWallpaperPaused = () => api.status().mode === 'paused' && document.documentElement.getAttribute('data-chatgpt-backdrop-muted') === document.documentElement.getAttribute('data-chatgpt-backdrop') && getComputedStyle(settingsWallpaperLayer).display === 'none';
+      const settingsWallpaperActive = () => api.status().mode !== 'paused' && document.documentElement.getAttribute('data-chatgpt-backdrop-muted') !== document.documentElement.getAttribute('data-chatgpt-backdrop') && getComputedStyle(settingsWallpaperLayer).display !== 'none' && alpha(settingsLayout) === 0;
+      for (const [targetName, target] of [['layout', settingsLayout], ['host', settingsHost], ['ancestor', settingsAncestor]]) {
+        for (const [attribute, value] of [['hidden', ''], ['inert', ''], ['aria-hidden', 'true'], ['role', 'dialog'], ['data-testid', 'settings-modal'], ['data-settings-page', ''], ['style', 'visibility:hidden'], ['style', 'display:none']]) {
+          const original = target.getAttribute(attribute);
+          target.setAttribute(attribute, value); await wait();
+          const paused = settingsWallpaperPaused();
+          if (original === null) target.removeAttribute(attribute); else target.setAttribute(attribute, original);
+          await wait();
+          const resumed = settingsWallpaperActive();
+          cachedSettingsCases.push({target: targetName, attribute, value, paused, resumed});
+          test('settings ' + targetName + ' ' + attribute + '=' + value + ' automatically pauses and resumes wallpaper', paused && resumed);
+        }
+        const originalClass = target.getAttribute('class');
+        for (const className of ['settings-visibility-hidden', 'settings-display-none']) {
+          target.classList.add(className); await wait();
+          const paused = settingsWallpaperPaused();
+          if (originalClass === null) target.removeAttribute('class'); else target.setAttribute('class', originalClass);
+          await wait();
+          const resumed = settingsWallpaperActive();
+          cachedSettingsCases.push({target: targetName, className, paused, resumed});
+          test('settings ' + targetName + ' ' + className + ' class automatically pauses and resumes wallpaper', paused && resumed);
+        }
+      }
+      const settingsStructureCases = [];
+      for (const [targetName, target, attribute, temporaryValue] of [
+        ['content', settingsGroup, 'data-density', null],
+        ['content', settingsGroup, 'class', settingsGroup.className.replace('group/settings', 'unrecognized-settings')],
+        ['layout', settingsLayout, 'class', settingsLayout.className.replace('electron:bg-surface', 'electron:bg-unrecognized')],
+        ['host', settingsHost, 'data-app-shell-main-surface', null]
+      ]) {
+        const original = target.getAttribute(attribute);
+        if (temporaryValue === null) target.removeAttribute(attribute); else target.setAttribute(attribute, temporaryValue);
+        await wait();
+        const paused = settingsWallpaperPaused();
+        if (original === null) target.removeAttribute(attribute); else target.setAttribute(attribute, original);
+        await wait();
+        const resumed = settingsWallpaperActive();
+        settingsStructureCases.push({target: targetName, attribute, paused, resumed});
+        test('restoring recognized settings ' + targetName + ' ' + attribute + ' automatically resumes wallpaper', paused && resumed);
+      }
+      settingsPathDiagnostic.cachedSettingsCases = cachedSettingsCases;
+      settingsPathDiagnostic.structureCases = settingsStructureCases;
+      test('automatic settings visibility transitions preserve the original wallpaper layer and decoded image', document.querySelector('[data-chatgpt-backdrop-layer]') === settingsWallpaperLayer && settingsWallpaperLayer.firstElementChild === settingsWallpaperImage && settingsWallpaperImage.style.backgroundImage === settingsWallpaperURL);
+      test('restoring the visible settings layout resumes its native wallpaper treatment', settingsWallpaperActive() && getComputedStyle(settingsCard).backgroundColor === settingsNative.cardBackground);
+      const authPaths = [];
+      for (const path of ['/login', '/auth/callback', '/billing']) {
+        await setFixturePath(path); authPaths.push({path, paused: api.status().mode === 'paused' && getComputedStyle(settingsWallpaperLayer).display === 'none'});
+      }
+      settingsPathDiagnostic.authPaths = authPaths;
+      test('login auth and billing remain protected even when a settings layout is mounted', authPaths.every(item => item.paused));
+    } catch (error) {
+      settingsPathDiagnostic.error = String(error);
+      test('the local settings route fixture can exercise same-origin history transitions', false);
+    } finally {
+      if (settingsPlaceholder.isConnected) settingsPlaceholder.replaceWith(settingsLayout);
+      history.replaceState(settingsHistoryState, '', settingsOriginalURL); dispatchEvent(new PopStateEvent('popstate')); await wait();
+    }
+    test('returning from settings paths preserves the same active wallpaper image', api.status().mode !== 'paused' && document.querySelector('[data-chatgpt-backdrop-layer]') === settingsWallpaperLayer && settingsWallpaperLayer.firstElementChild === settingsWallpaperImage && settingsWallpaperImage.style.backgroundImage === settingsWallpaperURL);
+    const settingsDiagnostic = {native: settingsNative, paths: settingsPathDiagnostic, activeBackground: getComputedStyle(settingsLayout).backgroundColor, negativeRoots: settingsNegativeRoots.map(item => ({variant: item.variant, background: getComputedStyle(item.node).backgroundColor}))};
     test('portaled Dots header fade outside the messaging subtree no longer paints', !dotsPage.contains(dotsHeaderFade) && decorationAbsent(dotsHeaderFade));
     test('Dots header fade retains native geometry and anchor metadata', JSON.stringify(dotsHeaderGeometry(dotsHeaderFade)) === JSON.stringify(dotsHeaderNative.fade) && dotsHeaderFade.getAttribute('style') === dotsHeaderNative.fadeStyle && dotsHeaderFade.getAttribute('aria-hidden') === 'true');
     test('portaled Dots profile and action controls keep their native appearance and geometry', JSON.stringify(dotsHeaderGeometry(dotsHeaderAction)) === JSON.stringify(dotsHeaderNative.action) && getComputedStyle(dotsHeaderAction).backgroundColor === dotsHeaderNative.actionBackground && getComputedStyle(document.getElementById('dots-header-profile')).visibility === 'visible');
@@ -1102,6 +1278,7 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     document.documentElement.className = 'light'; await wait();
     test('follows native light theme', api.status().mode === 'light');
     test('light mode keeps the portaled Dots header fade transparent', decorationAbsent(dotsHeaderFade));
+    test('light mode reveals the settings wallpaper while retaining light native cards', alpha(settingsLayout) === 0 && getComputedStyle(settingsCard).backgroundColor === 'rgb(242, 242, 242)' && getComputedStyle(settingsToggle).backgroundColor === settingsNative.buttonBackground);
     test('light theme work panels use white at the requested opacity', [...workPanels, dynamicSummary].every(node => {
       const channels = getComputedStyle(node).backgroundColor.match(/[\d.]+/g).map(Number);
       return channels.slice(0, 3).every(value => value === 255) && Math.abs(alpha(node) - requestedAlpha) < 0.005;
@@ -1381,11 +1558,17 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
       afterHTML: restoredHTML === baseline ? null : restoredHTML
     };
     test('restores exact original document', restoredHTML === baseline);
+    test('Restore returns the native settings page and preserves every card control and footer', getComputedStyle(settingsLayout).backgroundColor === settingsNative.layoutBackground && getComputedStyle(settingsCard).backgroundColor === settingsNative.cardBackground && getComputedStyle(settingsPreview).backgroundColor === settingsNative.previewBackground && getComputedStyle(settingsFooter).backgroundColor === settingsNative.footerBackground && settingsInput.value === 'Original setting');
     test('restore returns the native Dots header gradient and its original geometry', getComputedStyle(dotsHeaderFade).backgroundImage === dotsHeaderNative.fadeImage && JSON.stringify(dotsHeaderGeometry(dotsHeaderFade)) === JSON.stringify(dotsHeaderNative.fade));
     test('restore returns Dots native page footer and border paint', dotsNodes.every(node => getComputedStyle(node).backgroundColor === dotsNative.rootBackground) && !decorationAbsent(document.getElementById('dots-footer-combined')) && getComputedStyle(document.getElementById('dots-disclaimer')).backgroundColor === dotsNative.rootBackground && getComputedStyle(dotsWrap).borderBottomColor === dotsNative.rootBackground && getComputedStyle(dotsWrap).borderBottomWidth === dotsNative.borderWidth);
     test('restores pre-existing marker attributes', document.documentElement.getAttribute('data-chatgpt-backdrop') === 'prior-root' && old.getAttribute('data-chatgpt-backdrop-surface') === 'prior-main');
     test('restore is repeatable', api.restore().restored === true);
     const restoredDocument = document.documentElement.outerHTML;
+    const restoredSettingsAncestorClass = settingsAncestor.getAttribute('class');
+    settingsAncestor.classList.add('settings-visibility-hidden'); await wait();
+    if (restoredSettingsAncestorClass === null) settingsAncestor.removeAttribute('class'); else settingsAncestor.setAttribute('class', restoredSettingsAncestorClass);
+    await wait();
+    test('settings visibility changes after Restore cannot reactivate styling or mutate the restored document', document.documentElement.outerHTML === restoredDocument && !document.querySelector('[data-chatgpt-backdrop-layer]') && getComputedStyle(settingsLayout).backgroundColor === settingsNative.layoutBackground);
     const added = document.createElement('main'); document.body.append(added); await wait();
     test('restore disconnects automatic DOM styling', !added.hasAttribute('data-chatgpt-backdrop-surface') && !document.querySelector('[data-chatgpt-backdrop-layer]'));
     added.remove();
@@ -1436,6 +1619,6 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
       document.getElementById('root').style.visibility = 'hidden';
       scrollTo(0, 0); await wait();
     }
-    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, bottomGapDiagnostic, workSurfaceDiagnostic, dotsDiagnostic, dotsHeaderDiagnostic, readingDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
+    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, bottomGapDiagnostic, workSurfaceDiagnostic, dotsDiagnostic, dotsHeaderDiagnostic, settingsDiagnostic, readingDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
     """#
 }

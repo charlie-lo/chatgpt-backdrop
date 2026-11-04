@@ -6,6 +6,10 @@ An original, unofficial Mac utility for image backgrounds in the ChatGPT desktop
 
 Choose a local image, adjust its shade, blur, panel opacity and position, then restore the original appearance whenever you want.
 
+## Version 1.2.4 — Settings backgrounds
+
+The main Settings page now shows the selected wallpaper around its cards. Cards, controls, previews and the action footer keep their native appearance. Hiding or revealing an already mounted Settings page updates the wallpaper automatically. Embedded settings and protected dialogs retain their original styling; Restore Original restores the page background.
+
 ## Version 1.2.2 — native Accent colors
 
 Preserves the native Accent color on send/stop buttons, focus outlines and user-message fills in light and dark mode. Panel Opacity changes only the composer surface; changing Accent while a background is active updates the native controls immediately. Apply with the updated app to replace an earlier styling engine.
