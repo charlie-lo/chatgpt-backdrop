@@ -1545,6 +1545,10 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     // Dots uses native row roles and a separate scroll/list/pane hierarchy.
     // Keep its checks independent of the simultaneously mounted Work fixture.
     const dotsReadingBaseline = document.documentElement.outerHTML;
+    const dotsReadingLayerBaseline = document.querySelector('[data-chatgpt-backdrop-layer]').outerHTML;
+    const dotsReadingStyleBaseline = document.querySelector('[data-chatgpt-backdrop-style]').outerHTML;
+    const dotsReadingAttributeNodes = [nativeSidebar, nativeFrame, bottomFrame, bottomSidebar, dotsPage, dotsWrap];
+    const dotsReadingAttributeOrder = dotsReadingAttributeNodes.map(node => ({id: node.id, attributes: [...node.attributes].map(attribute => [attribute.name, attribute.value])}));
     const dotsPageStyle = dotsPage.getAttribute('style');
     const dotsReadingClass = document.documentElement.getAttribute('class');
     const dotsList = document.getElementById('dots-message-list');
@@ -1560,8 +1564,14 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     const visibleDotsPlates = () => dotsPlateNodes().filter(node => getComputedStyle(node).display !== 'none');
     const paint = node => {
       const style = getComputedStyle(node);
-      return {background: style.backgroundColor, color: style.color, radius: style.borderRadius, shadow: style.boxShadow, filter: style.filter, blur: backdropBlur(node), opacity: style.opacity};
+      return {background: style.backgroundColor, color: style.color, radius: style.borderRadius, shadow: style.boxShadow, filter: style.filter, blur: backdropBlur(node), opacity: style.opacity, nativeMaterial: style.getPropertyValue('--avatar-overlay-native-material')};
     };
+    const nestedMaterialAttachment = document.createElement('div');
+    nestedMaterialAttachment.setAttribute('data-orbit-message-block', 'attachment');
+    nestedMaterialAttachment.innerHTML = '<div id="dots-nested-native-material" data-avatar-overlay-material-variant="transcript-message">A native Material attachment inside an assistant group.</div>';
+    dotsMaterial.append(nestedMaterialAttachment);
+    const nestedMaterial = nestedMaterialAttachment.firstElementChild;
+    const nestedMaterialNativePaint = paint(nestedMaterial);
     const dotsNativeContentPaint = () => JSON.stringify(['dots-bubble', 'dots-reading-human', 'dots-reading-reaction', 'dots-reading-attachment', 'dots-reading-choice', 'dots-reading-code', 'accent-dots-send'].map(id => paint(document.getElementById(id))));
     Object.assign(dotsPage.style, {position: 'fixed', left: '160px', top: '64px', width: '720px', height: '520px'});
     const negativeDots = [];
@@ -1610,6 +1620,11 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     }
     document.documentElement.className = 'dark';
     api.apply({...dotsReadingConfig, readingMode: 'cards', readingOpacity: 0.61, readingBlur: 3}); await settleReading();
+    test('Dots reading keeps nested rich-block Material paint and inherited native material settings', JSON.stringify(paint(nestedMaterial)) === JSON.stringify(nestedMaterialNativePaint) && alpha(nestedMaterial) > 0);
+    const dotsPlainMarkdown = dotsSimple.querySelector('[data-markdown-text-style="assistant-message"]');
+    dotsPlainMarkdown.removeAttribute('data-markdown-text-style'); dotsSimple.setAttribute('data-markdown-text-style', 'assistant-message'); await settleReading();
+    test('Dots reading recognizes plain assistant markdown when its style marker is on the bubble itself', dotsPlateNodes().length === 2 && alpha(dotsSimple) === 0);
+    dotsSimple.removeAttribute('data-markdown-text-style'); dotsPlainMarkdown.setAttribute('data-markdown-text-style', 'assistant-message'); await settleReading();
     test('Dots reading discovery excludes standalone attachment reply-chain and protected transcripts', negativeDots.every(({copy}) => copy.querySelector('.message-list').getAttribute('data-chatgpt-backdrop-reading') === dotsScopeBefore && alpha(copy.querySelector('.message-surface > .message-bubble')) > 0));
     const reaction = document.getElementById('dots-reading-reaction'); const link = document.getElementById('dots-reading-link');
     const reactionBefore = window.dotsReadingReactionClicks || 0, linkBefore = window.dotsReadingLinkClicks || 0;
@@ -1644,13 +1659,24 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     dotsAway.replaceWith(dotsPage); await settleReading();
     test('navigation back to Dots inherits the active reading treatment without resetting the GIF', visibleDotsPlates().length === 1 && document.querySelector('[data-chatgpt-backdrop-layer]').firstElementChild === dotsWallpaper && dotsWallpaper.style.backgroundImage === dotsWallpaperURL);
     for (const {host} of negativeDots) host.remove();
+    nestedMaterialAttachment.remove();
     if (dotsPageStyle === null) dotsPage.removeAttribute('style'); else dotsPage.setAttribute('style', dotsPageStyle);
     if (dotsReadingClass === null) document.documentElement.removeAttribute('class'); else document.documentElement.setAttribute('class', dotsReadingClass);
     dotsScroll.scrollTop = dotsScrollBefore;
     api.restore();
     test('Restore Original directly removes active Dots reading state and restores native assistant material', dotsPlateNodes().length === 0 && dotsList.getAttribute('data-chatgpt-backdrop-reading') === dotsScopeBefore && alpha(dotsSimple) > 0 && alpha(dotsMaterial, '::before') > 0 && /blur\(8px\)/.test(backdropBlur(dotsMaterial)));
     api.apply(baseReadingConfig); await settleReading();
-    test('Dots reading exercises leave the prior active document exactly unchanged', document.documentElement.outerHTML === dotsReadingBaseline);
+    const dotsReadingAfter = document.documentElement.outerHTML;
+    let dotsReadingDifference = 0;
+    while (dotsReadingDifference < Math.min(dotsReadingBaseline.length, dotsReadingAfter.length) && dotsReadingBaseline[dotsReadingDifference] === dotsReadingAfter[dotsReadingDifference]) dotsReadingDifference++;
+    const dotsReadingDiagnostic = {exact: dotsReadingAfter === dotsReadingBaseline, firstDifferenceIndex: dotsReadingDifference,
+      beforeContext: dotsReadingBaseline.slice(Math.max(0, dotsReadingDifference - 180), dotsReadingDifference + 220),
+      afterContext: dotsReadingAfter.slice(Math.max(0, dotsReadingDifference - 180), dotsReadingDifference + 220),
+      ownedLayerExact: document.querySelector('[data-chatgpt-backdrop-layer]').outerHTML === dotsReadingLayerBaseline,
+      ownedStyleExact: document.querySelector('[data-chatgpt-backdrop-style]').outerHTML === dotsReadingStyleBaseline,
+      attributesBefore: dotsReadingAttributeOrder,
+      attributesAfter: dotsReadingAttributeNodes.map(node => ({id: node.id, attributes: [...node.attributes].map(attribute => [attribute.name, attribute.value])}))};
+    test('Dots reading exercises leave the prior active document exactly unchanged', dotsReadingAfter === dotsReadingBaseline);
     const old = document.getElementById('main');
     const replacement = document.createElement('main');
     replacement.id = 'replacement'; replacement.innerHTML = '<p>New SPA route</p>';
@@ -1748,6 +1774,6 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
       document.getElementById('root').style.visibility = 'hidden';
       scrollTo(0, 0); await wait();
     }
-    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, bottomGapDiagnostic, workSurfaceDiagnostic, dotsDiagnostic, dotsHeaderDiagnostic, settingsDiagnostic, readingDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
+    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, bottomGapDiagnostic, workSurfaceDiagnostic, dotsDiagnostic, dotsHeaderDiagnostic, settingsDiagnostic, readingDiagnostic, dotsReadingDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
     """#
 }

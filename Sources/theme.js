@@ -568,7 +568,7 @@
     const outsideProtected = `:not(:is(dialog,dialog *,[role=dialog],[role=dialog] *,[role=alertdialog],[role=alertdialog] *,[role=menu],[role=menu] *,[role=listbox],[role=listbox] *,pre,pre *,code,code *,[data-testid=settings-modal],[data-testid=settings-modal] *,[data-settings-page],[data-settings-page] *,${settingsPageContent},${settingsPageContent} *))`;
     const outsideDotsReading = ":not(:is(.messaging-attachments,.messaging-attachments *,.messaging-root:not(.messaging-embedded),.messaging-root:not(.messaging-embedded) *,.reply-chain-panel,.reply-chain-panel *,.reply-chain-transcript,.reply-chain-transcript *,.message-list .message-list,.message-list .message-list *,[data-orbit-message-block],[data-orbit-message-block] *,[data-option-picker-choice],[data-option-picker-choice] *,[data-transcript-role=user],[data-transcript-role=user] *,button,button *))";
     const dotsReadingRow = `${root} .message-list:is([${READING_ATTRIBUTE}="${owner}:sheet"],[${READING_ATTRIBUTE}="${owner}:cards"],[${READING_ATTRIBUTE}="${owner}:focus"]) > .message-row.assistant`;
-    const dotsTextBacking = `${dotsReadingRow} .message-surface > .message-bubble:has([data-markdown-text-style="assistant-message"])${outsideProtected}${outsideDotsReading}`;
+    const dotsTextBacking = `${dotsReadingRow} .message-surface > .message-bubble:is([data-markdown-text-style="assistant-message"],:has([data-markdown-text-style="assistant-message"]))${outsideProtected}${outsideDotsReading}`;
     const dotsTextPart = `${dotsReadingRow} .message-bubble[data-orbit-message-text-part][data-markdown-text-style="assistant-message"]${outsideProtected}${outsideDotsReading}`;
     const dotsMaterial = `${dotsReadingRow} [data-avatar-overlay-material-variant="transcript-message"]:is([data-transcript-role="assistant"],:has(> [data-orbit-message-text-part])):has([data-markdown-text-style="assistant-message"])${outsideProtected}${outsideDotsReading}`;
     const dotsFooter = `.messaging-root.messaging-embedded[${SURFACE_ATTRIBUTE}="${owner}"] .conversation-footer`;
@@ -720,7 +720,6 @@ ${dotsMaterial}::before {
 }
 ${dotsMaterial} {
   -owl-native-material: none !important;
-  --avatar-overlay-native-material: none !important;
 }
 /* Native normal composers paint their root, except on Home where only their
    body paints. Use the local surface token, leaving shared action-color tokens
