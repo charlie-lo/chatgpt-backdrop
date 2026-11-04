@@ -1663,8 +1663,9 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     if (dotsPageStyle === null) dotsPage.removeAttribute('style'); else dotsPage.setAttribute('style', dotsPageStyle);
     if (dotsReadingClass === null) document.documentElement.removeAttribute('class'); else document.documentElement.setAttribute('class', dotsReadingClass);
     dotsScroll.scrollTop = dotsScrollBefore;
-    api.restore();
-    test('Restore Original directly removes active Dots reading state and restores native assistant material', dotsPlateNodes().length === 0 && dotsList.getAttribute('data-chatgpt-backdrop-reading') === dotsScopeBefore && alpha(dotsSimple) > 0 && alpha(dotsMaterial, '::before') > 0 && /blur\(8px\)/.test(backdropBlur(dotsMaterial)));
+    // None must preserve the exact active document. A full Restore/Apply cycle
+    // legitimately appends fresh owned marker attributes after fixture styles,
+    // so test that separate lifecycle against native restoration below.
     api.apply(baseReadingConfig); await settleReading();
     const dotsReadingAfter = document.documentElement.outerHTML;
     let dotsReadingDifference = 0;
@@ -1676,7 +1677,12 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
       ownedStyleExact: document.querySelector('[data-chatgpt-backdrop-style]').outerHTML === dotsReadingStyleBaseline,
       attributesBefore: dotsReadingAttributeOrder,
       attributesAfter: dotsReadingAttributeNodes.map(node => ({id: node.id, attributes: [...node.attributes].map(attribute => [attribute.name, attribute.value])}))};
-    test('Dots reading exercises leave the prior active document exactly unchanged', dotsReadingAfter === dotsReadingBaseline);
+    test('Dots None leaves the prior active document exactly unchanged', dotsReadingAfter === dotsReadingBaseline);
+    api.apply({...baseReadingConfig, readingMode: 'sheet', readingOpacity: 0.61, readingBlur: 3}); await settleReading();
+    const dotsReadingWasActiveBeforeRestore = visibleDotsPlates().length === 1 && dotsList.getAttribute('data-chatgpt-backdrop-reading') !== dotsScopeBefore;
+    api.restore();
+    test('Restore Original directly removes active Dots reading state and restores native assistant material', dotsReadingWasActiveBeforeRestore && dotsPlateNodes().length === 0 && dotsList.getAttribute('data-chatgpt-backdrop-reading') === dotsScopeBefore && alpha(dotsSimple) > 0 && alpha(dotsMaterial, '::before') > 0 && /blur\(8px\)/.test(backdropBlur(dotsMaterial)));
+    api.apply(baseReadingConfig); await settleReading();
     const old = document.getElementById('main');
     const replacement = document.createElement('main');
     replacement.id = 'replacement'; replacement.innerHTML = '<p>New SPA route</p>';
