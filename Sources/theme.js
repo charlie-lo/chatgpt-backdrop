@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.0";
+  const VERSION = "1.2.1";
   const GLOBAL = "__chatGPTBackdrop";
   const ROOT_ATTRIBUTE = "data-chatgpt-backdrop";
   const SURFACE_ATTRIBUTE = "data-chatgpt-backdrop-surface";
@@ -555,6 +555,12 @@ ${root} aside.app-shell-left-panel[data-app-shell-left-panel-appearance]:not([da
 /* The native visual hairline is separate from the functional resize handle. */
 ${root} [data-app-shell-page-sidebar="true"] [class*="_MainContentLeftBorder_"]${outsideProtected} {
   border-left-color: transparent !important;
+}
+/* Dots portals this decorative fade beside its real header controls, outside
+   the messaging roots. Keep the portal, anchor geometry and controls intact. */
+${root} [data-app-shell-main-content-layout] div[aria-hidden="true"][class*="_floatingHeader_"][style*="--orbit-messaging-header-"]:empty${outsideProtected} {
+  background-color: transparent !important;
+  background-image: none !important;
 }
 /* These are empty, aria-hidden native paint layers. Their containing wrappers
    also hold transcript/controls, so never hide those wrappers themselves. */
