@@ -9,3 +9,4 @@ xcrun swiftc -parse-as-library -module-cache-path "$task_work_dir/module-cache" 
   -framework AppKit -framework WebKit "$task_test_dir/ThemeTests.swift" \
   -o "$task_work_dir/ThemeTests"
 "$task_work_dir/ThemeTests" "$task_project_dir/Sources/theme.js"
+"$task_work_dir/ThemeTests" "$task_project_dir/Sources/theme.js" --native-modules

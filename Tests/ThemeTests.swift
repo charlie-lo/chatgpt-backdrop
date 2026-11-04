@@ -26,10 +26,11 @@ struct ThemeTests {
         let resultURL = (Bundle.main.object(forInfoDictionaryKey: "BackdropTestResultPath") as? String)
             .map { URL(fileURLWithPath: $0) }
         do {
+            let arguments = CommandLine.arguments.dropFirst().filter { $0 != "--native-modules" }
             let sourceURL: URL
-            if CommandLine.arguments.count == 2 {
-                sourceURL = URL(fileURLWithPath: CommandLine.arguments[1])
-            } else if CommandLine.arguments.count == 1,
+            if arguments.count == 1 {
+                sourceURL = URL(fileURLWithPath: arguments[0])
+            } else if arguments.isEmpty,
                       let bundled = Bundle.main.url(forResource: "theme", withExtension: "js") {
                 sourceURL = bundled
             } else {
@@ -52,6 +53,7 @@ struct ThemeTests {
 final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMessageHandlerWithReply {
     private let engine: String
     private let resultURL: URL?
+    private let nativeModuleFormat: Bool
     private var webView: WKWebView!
     private var window: NSWindow?
     private var timeout: Timer?
@@ -60,6 +62,28 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     init(engine: String, resultURL: URL? = nil) {
         self.engine = engine
         self.resultURL = resultURL
+        nativeModuleFormat = CommandLine.arguments.contains("--native-modules") ||
+            ProcessInfo.processInfo.environment["BACKDROP_TEST_NATIVE_MODULES"] == "1" ||
+            Bundle.main.object(forInfoDictionaryKey: "BackdropTestModuleFormat") as? String == "native"
+    }
+
+    /// Transform only test-authored fixture class tokens. The production engine
+    /// is inserted afterward, byte for byte, so compatibility is not simulated.
+    private func fixtureModuleNames(_ value: String) -> String {
+        guard nativeModuleFormat else { return value }
+        let tokens = [
+            ("_MainContentTopFade_fixture", "MainContentTopFade-T6W4RS"),
+            ("_PageSurface_fixture", "PageSurface-g2Llyi"),
+            ("_MainContentLeftBorder_fixture", "MainContentLeftBorder-IFAvO_"),
+            ("_ComposerLayoutRoot_fixture", "ComposerLayoutRoot-XCKS7O"),
+            ("_ComposerLayoutBody_fixture", "ComposerLayoutBody-uBBf1A"),
+            ("_floatingHeader_fixture", "floatingHeader-tfHzDp"),
+            ("_background_fixture", "background-uNUrfY"),
+            ("_surface_fixture", "surface-nr8PSS"),
+            ("_fade_fixture", "fade-AcMqqj"),
+            ("_combined_fixture", "combined-vZM0uN")
+        ]
+        return tokens.reduce(value) { $0.replacingOccurrences(of: $1.0, with: $1.1) }
     }
 
     func start() {
@@ -246,9 +270,19 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
         .fixture-native-accent-control:disabled{opacity:.4;cursor:not-allowed}
         .fixture-messaging-accent{--messaging-send-background:rgb(36,117,78);--messaging-send-foreground:rgb(245,255,249);--color-background-composer-primary:var(--messaging-send-background);--color-text-composer-primary:var(--messaging-send-foreground)}
         .fixture-unpersonalized-composer{--color-background-composer-primary:rgb(73,74,75);--color-text-composer-primary:rgb(250,250,250)}
+        /* Current app class names, exercised in every run alongside the
+           selectable full-suite format. Native lookalikes retain their paint. */
+        #module-compat-host{display:none}
+        .MainContentTopFade-T6W4RS,.PrefixMainContentTopFade-T6W4RS,.MainContentTopFadeish-T6W4RS{height:40px;background-image:linear-gradient(rgb(24,24,27),transparent)}
+        .PageSurface-g2Llyi,.FullHeightPageSurface-Spy7z1,.PrefixPageSurface-g2Llyi{box-shadow:0 0 0 .5px rgba(255,255,255,.1),-8px 0 32px rgba(0,0,0,.7)}
+        .background-uNUrfY.surface-nr8PSS{height:180px;background:rgb(24,24,27)}
+        .background-uNUrfY.fade-AcMqqj,.background-uNUrfY.combined-vZM0uN{height:32px;background-image:linear-gradient(to top,rgb(24,24,27),transparent)}
+        .ComposerLayoutRoot-XCKS7O{--composer-layout-surface-background:rgb(24,24,27);--composer-layout-surface-shadow:var(--elevation-composer);background-color:var(--composer-layout-surface-background);box-shadow:var(--composer-layout-surface-shadow)}
+        .MainContentLeftBorder-IFAvO_{border-left:.5px solid var(--app-shell-sidebar-divider)}
+        .floatingHeader-tfHzDp{height:96px;background-image:linear-gradient(rgb(24,24,27),transparent)}
         </style>
         <script>
-        \(engine)
+        __BACKDROP_TEST_ENGINE_SOURCE__
         window.fixtureImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/mZQAAAAASUVORK5CYII=';
         window.fixtureGIF87 = 'data:image/gif;base64,\(Self.animatedGIFBase64)';
         window.fixtureGIF = 'data:image/gif;base64,' + btoa('GIF89a' + atob('\(Self.animatedGIFBase64)').slice(6));
@@ -266,6 +300,26 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
           <aside id="sidebar" class="app-shell-left-panel" data-app-shell-left-panel-appearance="translucent"><div id="navigation-rail">Home</div><div id="sidebar-content"><div id="sidebar-header" class="_FloatingHeader_fixture" data-app-shell-left-panel-appearance="translucent">Sidebar</div><nav id="sidebar-navigation" class="sidebar-navigation">Navigation</nav></div><div id="sidebar-resize-wrapper" class="group/panel-resizer"><div id="sidebar-resize-handle" role="separator" aria-orientation="vertical" tabindex="0"><div id="sidebar-resize-line" class="sidebar-resize-handle-line"></div></div></div></aside>
           <aside id="content-sidebar" class="app-shell-left-panel" data-app-shell-left-panel-appearance="content-surface">Content surface</aside>
           <aside id="peeking-sidebar" class="app-shell-left-panel" data-app-shell-left-panel-appearance="translucent" data-slate-sidebar-peeking="true">Peeking sidebar</aside>
+          <section id="module-compat-host" data-app-shell-main-content-layout>
+            <div data-app-shell-main-content-top-fade="visible">
+              <div id="module-fade-first" class="MainContentTopFade-T6W4RS background-j0etS7" aria-hidden="true"></div>
+              <div id="module-fade-later" class="pointer-events-none MainContentTopFade-T6W4RS background-j0etS7" aria-hidden="true"></div>
+              <div id="module-fade-lookalike" class="PrefixMainContentTopFade-T6W4RS" aria-hidden="true"></div>
+              <div id="module-fade-near-name" class="MainContentTopFadeish-T6W4RS" aria-hidden="true"></div>
+              <div id="module-fade-controls" class="MainContentTopFade-T6W4RS" aria-hidden="true"><button type="button">Retained control</button></div>
+            </div>
+            <div id="module-page-first" class="PageSurface-g2Llyi" aria-hidden="true"></div>
+            <div id="module-page-later" class="pointer-events-none PageSurface-g2Llyi" aria-hidden="true"></div>
+            <div id="module-page-full-height" class="FullHeightPageSurface-Spy7z1" aria-hidden="true"></div>
+            <div id="module-page-lookalike" class="PrefixPageSurface-g2Llyi" aria-hidden="true"></div>
+            <div id="module-page-controls" class="PageSurface-g2Llyi" aria-hidden="true"><button type="button">Retained page control</button></div>
+            <div class="thread-scroll-container"><div id="module-footer-surface" class="background-uNUrfY surface-nr8PSS" aria-hidden="true"></div><div id="module-footer-fade" class="pointer-events-none background-uNUrfY fade-AcMqqj" aria-hidden="true"></div><div id="module-footer-combined" class="background-uNUrfY combined-vZM0uN" aria-hidden="true"></div></div>
+            <div id="module-native-border" class="MainContentLeftBorder-IFAvO_"></div>
+            <section id="module-native-composer" class="relative ComposerLayoutRoot-XCKS7O" data-composer-surface-variant="default"><button type="button">Native composer control</button></section>
+            <div id="module-native-dots-fade" class="pointer-events-none floatingHeader-tfHzDp" aria-hidden="true" style="position-anchor: --orbit-messaging-header-compat"></div>
+            <div role="dialog" data-app-shell-frame><div data-app-shell-main-content-top-fade><div id="module-dialog-fade" class="MainContentTopFade-T6W4RS" aria-hidden="true"></div></div><div id="module-dialog-page" class="PageSurface-g2Llyi" aria-hidden="true"></div><div class="thread-scroll-container"><div id="module-dialog-footer" class="background-uNUrfY fade-AcMqqj" aria-hidden="true"></div></div></div>
+            <div role="menu" data-app-shell-frame><div data-app-shell-main-content-top-fade><div id="module-menu-fade" class="MainContentTopFade-T6W4RS" aria-hidden="true"></div></div><div id="module-menu-page" class="PageSurface-g2Llyi" aria-hidden="true"></div></div>
+          </section>
           <main id="main" class="_MainContentLeftBorder_fixture" data-chatgpt-backdrop-surface="prior-main" data-app-shell-page-surface>
             <article data-message-author-role="assistant"><p>Message text</p><pre><code>const unchanged = true;</code></pre></article>
             <div role="dialog"><div data-message-author-role="assistant">Protected dialog content</div><div data-thread-footer-background><div id="dialog-decoration" class="_background_fixture _fade_fixture" aria-hidden="true"></div></div><div id="dialog-left-border" class="_MainContentLeftBorder_fixture">Native dialog border</div></div>
@@ -328,7 +382,8 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
         """
         // The synthetic base is used only as the document's in-memory origin.
         // The fixture has no external scripts, styles, fonts, or image URLs.
-        webView.loadHTMLString(fixture, baseURL: URL(string: "https://backdrop-test.invalid/"))
+        let renderedFixture = fixtureModuleNames(fixture).replacingOccurrences(of: "__BACKDROP_TEST_ENGINE_SOURCE__", with: engine)
+        webView.loadHTMLString(renderedFixture, baseURL: URL(string: "https://backdrop-test.invalid/"))
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
@@ -349,12 +404,13 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
                 self?.window?.makeFirstResponder(webView)
                 let nativeFocusBefore = ["applicationActive": NSApp.isActive,
                                          "keyWindow": self?.window?.isKeyWindow ?? false]
-                let value = try await webView.callAsyncJavaScript(Self.assertions, arguments: [:], in: nil, contentWorld: .page)
+                let value = try await webView.callAsyncJavaScript(self?.fixtureModuleNames(Self.assertions) ?? Self.assertions, arguments: [:], in: nil, contentWorld: .page)
                 guard var object = value as? [String: Any],
                       var checks = object["checks"] as? [[String: Any]], let self else {
                     self?.finish(error: "WebKit returned an unexpected result: \(String(describing: value))")
                     return
                 }
+                object["fixtureModuleFormat"] = self.nativeModuleFormat ? "native" : "legacy"
                 object["nativeFocusBefore"] = nativeFocusBefore
                 object["nativeFocusAfter"] = ["applicationActive": NSApp.isActive,
                                              "keyWindow": self.window?.isKeyWindow ?? false]
@@ -764,6 +820,15 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     unpersonalizedComposer.setAttribute('data-composer-surface-variant', 'default');
     unpersonalizedComposer.innerHTML = accentButtons('accent-unpersonalized');
     document.getElementById('main').append(unpersonalizedComposer, accentReferences);
+    const moduleByID = id => document.getElementById(id);
+    const modulePaint = id => {
+      const style = getComputedStyle(moduleByID(id));
+      return {image: style.backgroundImage, background: style.backgroundColor, shadow: style.boxShadow, border: style.borderLeftColor, borderWidth: style.borderLeftWidth};
+    };
+    const moduleNativeIDs = ['module-fade-first','module-fade-later','module-page-first','module-page-later','module-footer-surface','module-footer-fade','module-footer-combined','module-native-border','module-native-composer','module-native-dots-fade'];
+    const moduleGuardIDs = ['module-fade-lookalike','module-fade-near-name','module-fade-controls','module-page-full-height','module-page-lookalike','module-page-controls','module-dialog-fade','module-dialog-page','module-dialog-footer','module-menu-fade','module-menu-page'];
+    const moduleBefore = Object.fromEntries([...moduleNativeIDs, ...moduleGuardIDs].map(id => [id, modulePaint(id)]));
+    test('current module fixture reproduces the native top fade and page shadow', moduleBefore['module-fade-first'].image.includes('linear-gradient') && moduleBefore['module-page-first'].shadow !== 'none');
     const baseline = document.documentElement.outerHTML;
     const accentPaint = id => {
       const style = getComputedStyle(document.getElementById(id));
@@ -1238,6 +1303,16 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     };
     test('nested sidebar header does not add another tint', alpha(document.getElementById('sidebar-header')) === 0);
     test('native sidebar navigation does not add a 65 percent tint', alpha(document.getElementById('sidebar-navigation')) === 0);
+    test('current top fade token at class start is cleared', decorationAbsent(moduleByID('module-fade-first')));
+    test('current top fade token after utility classes is cleared', decorationAbsent(moduleByID('module-fade-later')));
+    test('current page shadow token at class start is cleared', getComputedStyle(moduleByID('module-page-first')).boxShadow === 'none');
+    test('current page shadow token after utility classes is cleared', getComputedStyle(moduleByID('module-page-later')).boxShadow === 'none');
+    test('current footer surface fade and combined layers are cleared', ['module-footer-surface','module-footer-fade','module-footer-combined'].every(id => decorationAbsent(moduleByID(id))));
+    test('current sidebar hairline clears only its paint', getComputedStyle(moduleByID('module-native-border')).borderLeftColor === 'rgba(0, 0, 0, 0)' && getComputedStyle(moduleByID('module-native-border')).borderLeftWidth === moduleBefore['module-native-border'].borderWidth);
+    test('current composer root follows panel opacity without broad shadow', Math.abs(alpha(moduleByID('module-native-composer')) - requestedAlpha) < 0.005 && getComputedStyle(moduleByID('module-native-composer')).boxShadow === 'none');
+    test('current Dots floating fade is cleared with its native anchor', getComputedStyle(moduleByID('module-native-dots-fade')).backgroundImage === 'none');
+    test('similar component names and control-bearing wrappers retain their paint', moduleGuardIDs.slice(0, 6).every(id => JSON.stringify(modulePaint(id)) === JSON.stringify(moduleBefore[id])));
+    test('current module classes in protected dialogs and menus retain their paint', moduleGuardIDs.slice(6).every(id => JSON.stringify(modulePaint(id)) === JSON.stringify(moduleBefore[id])));
     test('header decorative gradient is removed', decorationAbsent(document.getElementById('header-fade')));
     test('empty native page shadow layer is cleared', getComputedStyle(document.getElementById('page-shadow')).boxShadow === 'none');
     test('matching page layer with controls keeps its shadow', getComputedStyle(pageWithControls).boxShadow === pageControlShadow);
@@ -1720,6 +1795,7 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     };
     test('restores exact original document', restoredHTML === baseline);
     test('Restore returns the native settings page and preserves every card control and footer', getComputedStyle(settingsLayout).backgroundColor === settingsNative.layoutBackground && getComputedStyle(settingsCard).backgroundColor === settingsNative.cardBackground && getComputedStyle(settingsPreview).backgroundColor === settingsNative.previewBackground && getComputedStyle(settingsFooter).backgroundColor === settingsNative.footerBackground && settingsInput.value === 'Original setting');
+    test('Restore returns all current module paint and guard fixtures exactly', [...moduleNativeIDs, ...moduleGuardIDs].every(id => JSON.stringify(modulePaint(id)) === JSON.stringify(moduleBefore[id])));
     test('restore returns the native Dots header gradient and its original geometry', getComputedStyle(dotsHeaderFade).backgroundImage === dotsHeaderNative.fadeImage && JSON.stringify(dotsHeaderGeometry(dotsHeaderFade)) === JSON.stringify(dotsHeaderNative.fade));
     test('restore returns Dots native page footer and border paint', dotsNodes.every(node => getComputedStyle(node).backgroundColor === dotsNative.rootBackground) && !decorationAbsent(document.getElementById('dots-footer-combined')) && getComputedStyle(document.getElementById('dots-disclaimer')).backgroundColor === dotsNative.rootBackground && getComputedStyle(dotsWrap).borderBottomColor === dotsNative.rootBackground && getComputedStyle(dotsWrap).borderBottomWidth === dotsNative.borderWidth);
     test('restores pre-existing marker attributes', document.documentElement.getAttribute('data-chatgpt-backdrop') === 'prior-root' && old.getAttribute('data-chatgpt-backdrop-surface') === 'prior-main');
