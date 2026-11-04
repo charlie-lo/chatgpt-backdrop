@@ -49,7 +49,7 @@ struct ThemeTests {
 }
 
 @MainActor
-final class Runner: NSObject, WKNavigationDelegate {
+final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMessageHandlerWithReply {
     private let engine: String
     private let resultURL: URL?
     private var webView: WKWebView!
@@ -65,6 +65,7 @@ final class Runner: NSObject, WKNavigationDelegate {
     func start() {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
+        configuration.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "fixtureFocus")
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1280, height: 800), configuration: configuration)
         webView.navigationDelegate = self
         // WebKit pauses animation frames for a detached or fully hidden view.
@@ -74,6 +75,7 @@ final class Runner: NSObject, WKNavigationDelegate {
         window.title = "Backdrop DOM Tests — local fixture"
         window.contentView = webView
         window.isReleasedWhenClosed = false
+        window.delegate = self
         self.window = window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -174,6 +176,21 @@ final class Runner: NSObject, WKNavigationDelegate {
         #dots-footer ._background_fixture{position:absolute;inset:0;pointer-events:none}
         #dots-disclaimer-above{position:relative}
         #standalone-messaging,#dots-attachments-viewer{display:none}
+        /* Native conversation and footer columns share the thread width token. */
+        #thread-scroll{position:relative;overflow:auto;max-height:560px;width:780px;max-width:100%;margin-inline:auto;--thread-body-max-width:640px}
+        [data-thread-user-message-navigation-content],#reading-footer{position:relative;box-sizing:border-box;width:calc(100% - 48px);max-width:var(--thread-body-max-width);margin-inline:auto}
+        #reading-column{display:flex;flex-direction:column;gap:24px;padding-block:20px}
+        #reading-column [data-content-search-unit-key]{position:relative}
+        #reading-tail-spacer{height:280px;flex:none}
+        #thread-scroll [aria-hidden=true][class*="_background_fixture"]{position:absolute;pointer-events:none}
+        #thread-footer{position:sticky;bottom:0}
+        #reading-user-bubble{display:inline-block;margin-left:auto;background:rgb(142,57,97);border-radius:18px;padding:12px;color:white}
+        #reading-native-tool{background:rgba(35,38,42,.84);border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:16px}
+        #reading-link{color:rgb(232,132,185)}
+        #main.reading-test-hidden{opacity:0}
+        #reading-collapse-wrapper{overflow:hidden}
+        #reading-collapse-wrapper.reading-test-collapsed{height:0}
+        #reading-assistant.reading-test-contents{display:contents!important}
         </style>
         <script>
         \(engine)
@@ -183,6 +200,8 @@ final class Runner: NSObject, WKNavigationDelegate {
         window.titlebarControlClicks = 0;
         window.bottomControlClicks = 0;
         window.workControlClicks = 0;
+        window.readingControlClicks = 0;
+        window.readingLinkClicks = 0;
         window.beforeDOM = __chatGPTBackdrop.apply({imageData: fixtureImage});
         </script></head><body>
         <div id="root" data-app-shell-page-sidebar="true" data-app-shell-page-surface="true" data-app-shell-frame>
@@ -200,8 +219,16 @@ final class Runner: NSObject, WKNavigationDelegate {
             <div id="document-composer" class="_ComposerLayoutRoot_fixture" data-composer-surface-variant="document"><div contenteditable="true">Document editor</div></div>
             <div id="inline-composer" class="_ComposerLayoutRoot_fixture" data-composer-surface-variant="inline"><div contenteditable="true">Inline editor</div></div>
             <div id="thread-scroll" class="thread-scroll-container" data-thread-footer-background style="--thread-footer-background-offset:0px">
+              <div id="reading-column" data-thread-user-message-navigation-content data-chatgpt-backdrop-reading="prior-reading">
+                <section id="reading-assistant" data-content-search-unit-key="assistant-1"><div id="reading-assistant-inner" data-message-author-role="assistant"><p id="reading-text">Readable conversation text stays sharp and selectable.</p><a id="reading-link" href="#reading-link-target" onclick="event.preventDefault();readingLinkClicks++">Open a useful reference</a><div id="reading-nested-tool-unit" data-content-search-unit-key="assistant-1-tool"><div id="reading-native-tool">Native tool card <button id="reading-control" type="button" onclick="readingControlClicks++">View result</button></div></div><pre id="reading-code"><code>const reading = true;</code></pre></div></section>
+                <div id="reading-collapse-wrapper"><section id="reading-tool" data-content-search-unit-key="tool-2"><p>A separate tool result group.</p></section></div>
+                <div id="reading-local-turn" data-turn-key="local-turn"><div class="flex flex-col"><div id="reading-local-group" class="flex flex-col"><p>Local agent activity without a search-unit wrapper.</p></div><div id="reading-local-user-group" class="flex flex-col"><div class="group/user-message">Local user input stays native.</div></div></div></div>
+                <div data-turn-key="virtual-turn"><div id="reading-virtual-group" data-virtualized-turn-content>A virtualized assistant response.</div></div>
+                <section id="reading-user" data-content-search-unit-key="user-3" data-local-conversation-user-anchor="user-3"><div data-message-author-role="user"><div id="reading-user-bubble">Keep my native user bubble color.</div></div></section>
+                <div id="reading-tail-spacer" aria-hidden="true"></div>
+              </div>
               <div><div aria-hidden="true" class="pointer-events-none sticky bottom-0"><div id="footer-fade" class="_background_fixture _fade_fixture pointer-events-none absolute" aria-hidden="true"></div></div></div>
-              <div id="thread-footer" data-thread-scroll-footer="true"><div id="footer-surface" class="_background_fixture _surface_fixture pointer-events-none absolute bg-surface" aria-hidden="true"></div><div data-pip-obstacle="thread-footer"><form data-chatgpt-composer data-thread-find-composer="true" data-composer-placement="thread"><section id="thread-composer" class="_ComposerLayoutRoot_fixture" data-composer-dark data-composer-surface-variant="default" data-composer-utility-bar-variant="default" data-composer-layout="single-line"><div id="composer-body" class="_ComposerLayoutBody_fixture" data-composer-body data-composer-layout="single-line"><div contenteditable="true" id="prompt-textarea">Composer</div></div><button id="composer-control" type="button">Send</button></section></form></div></div>
+              <div id="thread-footer" data-thread-scroll-footer="true"><div id="footer-surface" class="_background_fixture _surface_fixture pointer-events-none absolute bg-surface" aria-hidden="true"></div><div id="reading-footer" data-pip-obstacle="thread-footer"><form data-chatgpt-composer data-thread-find-composer="true" data-composer-placement="thread"><section id="thread-composer" class="_ComposerLayoutRoot_fixture" data-composer-dark data-composer-surface-variant="default" data-composer-utility-bar-variant="default" data-composer-layout="single-line"><div id="composer-body" class="_ComposerLayoutBody_fixture" data-composer-body data-composer-layout="single-line"><div contenteditable="true" id="prompt-textarea">Composer</div></div><button id="composer-control" type="button">Send</button></section></form></div></div>
               <div id="footer-combined" class="_background_fixture _combined_fixture pointer-events-none absolute" aria-hidden="true"></div>
               <div id="footer-with-controls" class="_background_fixture _fade_fixture" aria-hidden="true"><button type="button">Preserved footer controls</button></div>
             </div>
@@ -272,6 +299,9 @@ final class Runner: NSObject, WKNavigationDelegate {
                 object["nativeFocusBefore"] = nativeFocusBefore
                 object["nativeFocusAfter"] = ["applicationActive": NSApp.isActive,
                                              "keyWindow": self.window?.isKeyWindow ?? false]
+                let readingRendering = await self.verifyReadingBlurRendering()
+                checks.append(contentsOf: readingRendering.checks)
+                object["readingBlurRendering"] = readingRendering.diagnostic
                 if object["gifSupported"] as? Bool == true {
                     let animation = await self.verifyGIFAnimation()
                     checks.append(contentsOf: animation.checks)
@@ -280,6 +310,9 @@ final class Runner: NSObject, WKNavigationDelegate {
                     object["passed"] = checks.filter { ($0["pass"] as? Bool) == true }.count
                     object["total"] = checks.count
                 }
+                object["checks"] = checks
+                object["passed"] = checks.filter { ($0["pass"] as? Bool) == true }.count
+                object["total"] = checks.count
                 let passed = checks.filter { ($0["pass"] as? Bool) == true }.count
                 let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
                 if let data, let json = String(data: data, encoding: .utf8) { print(json) }
@@ -305,6 +338,130 @@ final class Runner: NSObject, WKNavigationDelegate {
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         finish(error: "WebKit content process terminated.")
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
+                               replyHandler: @escaping (Any?, String?) -> Void) {
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        window?.makeFirstResponder(webView)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+            replyHandler(["appActive": NSApp.isActive, "windowKey": self?.window?.isKeyWindow ?? false], nil)
+        }
+    }
+
+    /// Probes an empty transcript region and calibrates its native snapshot
+    /// coordinates. WKSnapshot can omit compositor backdrop filters even when
+    /// the actual window renders them, so blur variance is diagnostic only.
+    /// ShowBlurDiagnostic keeps a production-engine comparison visible for
+    /// separate actual-display verification, rather than claiming a pixel pass.
+    private func verifyReadingBlurRendering() async -> (checks: [[String: Any]], diagnostic: [String: Any]) {
+        let names = ["local reading blur fixture renders real high-frequency wallpaper pixels",
+                     "native snapshot calibration samples the intended fixture coordinates"]
+        var checks = names.map { ["name": $0, "pass": false] as [String: Any] }
+        var diagnostic: [String: Any] = [:]
+        do {
+            let value = try await webView.callAsyncJavaScript("""
+            const root = document.getElementById('root'); root.style.visibility = 'visible';
+            const viewport = document.getElementById('thread-scroll');
+            scrollTo(0, Math.max(0, viewport.getBoundingClientRect().top + scrollY - 64));
+            viewport.scrollTop = viewport.scrollHeight;
+            globalThis.__chatGPTBackdrop.apply({imageData: patternImage, opacity: 0, blur: 0, panelOpacity: 0, readingMode: 'sheet', readingOpacity: 0, readingBlur: 0});
+            await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame);
+            const spacer = document.getElementById('reading-tail-spacer').getBoundingClientRect();
+            const view = viewport.getBoundingClientRect();
+            const left = Math.max(spacer.left, view.left, 0), right = Math.min(spacer.right, view.right, innerWidth);
+            const top = Math.max(spacer.top, view.top, 44), bottom = Math.min(spacer.bottom, view.bottom - 80, innerHeight - 20);
+            if (right - left < 64 || bottom - top < 64) throw new Error('The empty reading region is too small for a native blur sample.');
+            const plate = document.querySelector('[data-chatgpt-backdrop-reading-layer]'), r = plate?.getBoundingClientRect(), s = plate && getComputedStyle(plate);
+            return {x: (left + right - 64) / 2, y: (top + bottom - 64) / 2, width: 64, height: 64, plateCount: globalThis.__chatGPTBackdrop.status().readingSurfaceCount,
+              plateRect: r && {left:r.left,top:r.top,width:r.width,height:r.height}, blur:s?.backdropFilter || s?.webkitBackdropFilter,
+              clip:s?.clipPath, mode:globalThis.__chatGPTBackdrop.status().readingMode, parentContain:plate?.parentElement && getComputedStyle(plate.parentElement).contain};
+            """, arguments: ["patternImage": "data:image/png;base64," + Self.patternImageBase64], in: nil, contentWorld: .page)
+            guard let box = value as? [String: Any],
+                  let x = box["x"] as? Double, let y = box["y"] as? Double,
+                  let width = box["width"] as? Double, let height = box["height"] as? Double else {
+                throw NSError(domain: "ThemeTests", code: 3, userInfo: [NSLocalizedDescriptionKey: "Unexpected native reading sample rectangle."])
+            }
+            diagnostic["sample"] = box
+            diagnostic["webViewFlipped"] = webView.isFlipped
+            diagnostic["webViewBounds"] = ["width": webView.bounds.width, "height": webView.bounds.height]
+            let rect = NSRect(x: x, y: y, width: width, height: height)
+            try await Task.sleep(nanoseconds: 120_000_000)
+            let before = try await wallpaperPixelStatistics(rect: rect, label: "before")
+            let afterStyle = try await webView.callAsyncJavaScript("""
+            globalThis.__chatGPTBackdrop.apply({imageData: patternImage, opacity: 0, blur: 0, panelOpacity: 0, readingMode: 'sheet', readingOpacity: 0, readingBlur: 16});
+            await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame);
+            const plate=document.querySelector('[data-chatgpt-backdrop-reading-layer]'),r=plate.getBoundingClientRect(),s=getComputedStyle(plate);
+            return {rect:{left:r.left,top:r.top,width:r.width,height:r.height},blur:s.backdropFilter||s.webkitBackdropFilter,clip:s.clipPath,mode:globalThis.__chatGPTBackdrop.status().readingMode};
+            """, arguments: ["patternImage": "data:image/png;base64," + Self.patternImageBase64], in: nil, contentWorld: .page)
+            diagnostic["afterStyle"] = afterStyle
+            try await Task.sleep(nanoseconds: 120_000_000)
+            let after = try await wallpaperPixelStatistics(rect: rect, label: "after")
+            diagnostic["before"] = before; diagnostic["after"] = after
+            let beforeVariance = before["variance"] ?? 0
+            let afterVariance = after["variance"] ?? 1
+            checks[0]["pass"] = beforeVariance > 0.03 && (box["plateCount"] as? Int) == 1
+            diagnostic["snapshotBackdropFilter"] = afterVariance < beforeVariance * 0.55 ? "captured" : "not reflected in snapshot"
+            diagnostic["blurVerification"] = "Computed blur and scope are asserted in DOM checks. Actual compositor blur requires the optional production-engine display comparison; snapshot variance is not a pass/fail assertion."
+            // An independent foreground patch verifies the JS viewport point
+            // maps to the native full-view bitmap, including document scroll.
+            _ = try await webView.callAsyncJavaScript("""
+            const probe = document.createElement('div'); probe.id='native-snapshot-calibration';
+            Object.assign(probe.style,{position:'fixed',left:x+'px',top:y+'px',width:'64px',height:'64px',background:'rgb(220,30,50)',zIndex:'2147483647'});
+            document.body.append(probe); await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); return true;
+            """, arguments: ["x": x, "y": y], in: nil, contentWorld: .page)
+            try await Task.sleep(nanoseconds: 120_000_000)
+            let calibration = try await wallpaperPixelStatistics(rect: rect, label: "calibration")
+            diagnostic["calibration"] = calibration
+            diagnostic["snapshotMethod"] = "full WKWebView viewport bitmap, sampled at scaled JS viewport coordinates"
+            checks[1]["pass"] = (calibration["meanRed"] ?? 0) > 0.7 && (calibration["meanGreen"] ?? 1) < 0.25 && (calibration["meanBlue"] ?? 1) < 0.3 && (calibration["variance"] ?? 1) < 0.001
+            _ = try await webView.evaluateJavaScript("document.getElementById('native-snapshot-calibration')?.remove()")
+        } catch {
+            diagnostic["error"] = error.localizedDescription
+        }
+        // Preserve the original native GIF-frame checks' setup exactly.
+        _ = try? await webView.callAsyncJavaScript("""
+        document.getElementById('native-snapshot-calibration')?.remove();
+        globalThis.__chatGPTBackdrop.apply({imageData: fixtureGIF, opacity: 0, blur: 0, panelOpacity: 0, readingMode: 'none'});
+        document.getElementById('root').style.visibility = 'hidden';
+        scrollTo(0, 0); await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame);
+        return true;
+        """, arguments: [:], in: nil, contentWorld: .page)
+        return (checks, diagnostic)
+    }
+
+    private func wallpaperPixelStatistics(rect: NSRect, label: String) async throws -> [String: Double] {
+        let configuration = WKSnapshotConfiguration()
+        configuration.rect = webView.bounds
+        configuration.snapshotWidth = NSNumber(value: webView.bounds.width)
+        configuration.afterScreenUpdates = true
+        let snapshot = try await webView.takeSnapshot(configuration: configuration)
+        guard let tiff = snapshot.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff) else {
+            throw NSError(domain: "ThemeTests", code: 4, userInfo: [NSLocalizedDescriptionKey: "The native reading sample has no bitmap."])
+        }
+        if Bundle.main.object(forInfoDictionaryKey: "ShowBlurDiagnostic") as? Bool == true,
+           let resultURL, let png = bitmap.representation(using: .png, properties: [:]) {
+            try png.write(to: resultURL.deletingPathExtension().appendingPathExtension(label + ".png"), options: .atomic)
+        }
+        var total = 0.0, squared = 0.0, count = 0.0
+        var red = 0.0, green = 0.0, blue = 0.0
+        let scaleX = Double(bitmap.pixelsWide) / webView.bounds.width
+        let scaleY = Double(bitmap.pixelsHigh) / webView.bounds.height
+        let left = Int((rect.minX + 4) * scaleX), right = Int((rect.maxX - 4) * scaleX)
+        let top = Int((rect.minY + 4) * scaleY), bottom = Int((rect.maxY - 4) * scaleY)
+        for y in stride(from: top, to: min(bottom, bitmap.pixelsHigh), by: 2) {
+            for x in stride(from: left, to: min(right, bitmap.pixelsWide), by: 2) {
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+                let light = Double(color.redComponent) * 0.2126 + Double(color.greenComponent) * 0.7152 + Double(color.blueComponent) * 0.0722
+                total += light; squared += light * light; count += 1
+                red += Double(color.redComponent); green += Double(color.greenComponent); blue += Double(color.blueComponent)
+            }
+        }
+        guard count > 0 else { throw NSError(domain: "ThemeTests", code: 5, userInfo: [NSLocalizedDescriptionKey: "The native reading sample contains no pixels."]) }
+        let mean = total / count
+        return ["mean": mean, "variance": max(0, squared / count - mean * mean), "samples": count,
+                "meanRed": red / count, "meanGreen": green / count, "meanBlue": blue / count]
     }
 
     private func verifyGIFAnimation() async -> (checks: [[String: Any]], diagnostic: [String: Any]) {
@@ -355,11 +512,82 @@ final class Runner: NSObject, WKNavigationDelegate {
         finished = true
         timeout?.invalidate()
         webView?.stopLoading()
-        window?.orderOut(nil)
         writeTestResult(to: resultURL, success: error == nil, checks: assertions, error: error)
+        if Bundle.main.object(forInfoDictionaryKey: "ShowBlurDiagnostic") as? Bool == true,
+           let window = window {
+            webView.navigationDelegate = nil
+            webView.loadHTMLString("""
+            <!doctype html><html class="dark"><head><meta charset="utf-8"><style>
+            html,body{margin:0;color:white;font:18px -apple-system}
+            .thread-scroll-container{position:fixed;inset:90px 24px 24px;overflow:auto}
+            [data-thread-user-message-navigation-content]{position:absolute;box-sizing:border-box;left:54%;top:0;width:44%;height:100%;padding:24px}
+            .label{position:fixed;padding:8px 12px;background:#111e;border-radius:6px;z-index:10;pointer-events:none;font-size:15px}
+            .reference{position:fixed;box-sizing:border-box;left:48px;top:114px;width:40%;padding:12px;background:#111b;border-radius:8px}
+            button{font:inherit;color:inherit;background:#303035;border:1px solid #aaa;border-radius:6px;padding:8px 12px;margin-right:8px}
+            .actions{position:fixed;left:48px;bottom:48px;z-index:10;padding:12px;background:#111e;border-radius:8px}
+            </style></head><body>
+            <div class="label" style="left:24px;top:10px">Production engine — real displayed Sheet blur; close to finish</div>
+            <div class="label" style="left:48px;top:52px">Unplated wallpaper reference</div><div class="label" style="left:58%;top:52px">Sheet plate · opacity 0 · blur 16</div>
+            <div class="thread-scroll-container"><div data-thread-user-message-navigation-content><p>Text stays sharp above the local background blur.</p><p>Select this sentence to verify native text selection.</p><a href="#comparison-link" style="color:#9bf">Native link</a></div></div>
+            <div class="reference">The checkerboard should remain sharp outside the bounded chat column.</div>
+            <div class="actions"><button onclick="setReadingBlur(0)">Blur 0</button><button onclick="setReadingBlur(16)">Blur 16</button></div>
+            <script>\(engine)</script>
+            <script>function setReadingBlur(value){globalThis.__chatGPTBackdrop.apply({imageData:'data:image/png;base64,\(Self.patternImageBase64)',opacity:0,blur:0,panelOpacity:0,readingMode:'sheet',readingOpacity:0,readingBlur:value});document.querySelectorAll('.label')[2].textContent='Sheet plate · opacity 0 · blur '+value;}setReadingBlur(16);</script>
+            </body></html>
+            """, baseURL: URL(string: "https://backdrop-test.invalid/"))
+            window.title = "Backdrop Blur Comparison — actual display"
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        if Bundle.main.object(forInfoDictionaryKey: "ShowTestSummary") as? Bool == true,
+           let window = window {
+            let checks = assertions?["checks"] as? [[String: Any]] ?? []
+            let passed = checks.filter { ($0["pass"] as? Bool) == true }.count
+            let failures = checks.filter { ($0["pass"] as? Bool) != true }
+                .compactMap { $0["name"] as? String }
+            let title = error == nil ? "PASS \(passed)/\(checks.count) — Readability Tests" : "FAIL — Readability Tests"
+            let summary = NSTextView(frame: NSRect(x: 0, y: 0, width: 650, height: 390))
+            summary.isEditable = false
+            summary.isSelectable = true
+            summary.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+            summary.textColor = .labelColor
+            summary.backgroundColor = .windowBackgroundColor
+            summary.textContainerInset = NSSize(width: 18, height: 18)
+            summary.string = title + "\n\n" + (error ?? "All isolated page checks passed.") +
+                (failures.isEmpty ? "" : "\n\n" + failures.joined(separator: "\n")) +
+                "\n\nThis fixture never connects to ChatGPT.\nClose this window to finish."
+            window.contentView = summary
+            window.setContentSize(NSSize(width: 650, height: 390))
+            window.title = title
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        window?.orderOut(nil)
         if let error { fputs("FAIL: \(error)\n", stderr); exit(1) }
         exit(0)
     }
+
+    func windowWillClose(_ notification: Notification) {
+        NSApp.terminate(nil)
+    }
+
+    private static let patternImageBase64: String = {
+        let size = 256
+        let context = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8,
+                                bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.setFillColor(CGColor(gray: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: size, height: size))
+        context.setFillColor(CGColor(gray: 0, alpha: 1))
+        for y in stride(from: 0, to: size, by: 2) {
+            for x in stride(from: 0, to: size, by: 2) where ((x + y) / 2) % 2 == 0 {
+                context.fill(CGRect(x: x, y: y, width: 2, height: 2))
+            }
+        }
+        return NSBitmapImageRep(cgImage: context.makeImage()!).representation(using: .png, properties: [:])!.base64EncodedString()
+    }()
 
     // Original ImageIO fixture: three full solid frames, 0.24 s each, looped.
     private static let animatedGIFBase64 = "R0lGODdhYABAAKIAAAAAAP8mAAQz/wD5AP///wAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQFGAAFACwAAAAAYABAAAADWBi63P4wykmrvTjrzbv/YCiOZGmeaKqubOu+cCzPdG3feK7vfO//wKBwSCwaj8ikcslsOp/QqHRKrVqv2Kx2y+16v+CweEwum8/otHrNbrvf8Lh8Tq/bXwkAIfkEBRgABQAsAAAAAGAAQAAAA1g4utz+MMpJq7046827/2AojmRpnmiqrmzrvnAsz3Rt33iu73zv/8CgcEgsGo/IpHLJbDqf0Kh0Sq1ar9isdsvter/gsHhMLpvP6LR6zW673/C4fE6v218JACH5BAUYAAUALAAAAABgAEAAAANYKLrc/jDKSau9OOvNu/9gKI5kaZ5oqq5s675wLM90bd94ru987//AoHBILBqPyKRyyWw6n9CodEqtWq/YrHbL7Xq/4LB4TC6bz+i0es1uu9/wuHxOr9tfCQA7"
@@ -756,8 +984,10 @@ final class Runner: NSObject, WKNavigationDelegate {
     test('document composer keeps its transparent native surface', alpha(document.getElementById('document-composer')) === 0);
     test('inline composer keeps its transparent native surface', alpha(document.getElementById('inline-composer')) === 0);
     const documentEditor = document.querySelector('#document-composer [contenteditable]');
+    const hostFocus = window.webkit?.messageHandlers?.fixtureFocus ? await window.webkit.messageHandlers.fixtureFocus.postMessage({}) : null;
     documentEditor.focus(); await wait();
     const focusDiagnostic = {
+      hostFocus,
       editorFocused: document.activeElement === documentEditor,
       activeTag: document.activeElement?.tagName,
       activeId: document.activeElement?.id,
@@ -796,6 +1026,185 @@ final class Runner: NSObject, WKNavigationDelegate {
     test('Dots navigation preserves the existing wallpaper layer and image assignment', document.querySelector('[data-chatgpt-backdrop-layer]') === dotsRouteLayer && dotsRouteLayer.firstElementChild === dotsRouteImage && dotsRouteImage.style.backgroundImage === dotsRouteImageURL);
     dotsRoute.replaceWith(dotsRouteMain); dotsPlaceholder.replaceWith(dotsPage); await wait();
     test('SPA navigation out of Dots reveals the regular conversation again', alpha(dotsRouteMain) === 0 && !dotsRoute.hasAttribute('data-chatgpt-backdrop-surface') && dotsRoute.querySelector('#dots-inner-root').getAttribute('data-chatgpt-backdrop-surface') === 'prior-dots');
+    // Reading treatments are independent of the surrounding panel tint. The
+    // fixture uses the renderer's centered content and sticky footer structure.
+    const readingViewport = document.getElementById('thread-scroll');
+    const readingColumn = document.getElementById('reading-column');
+    const readingFooter = document.getElementById('reading-footer');
+    const readingText = document.getElementById('reading-text');
+    const readingUser = document.getElementById('reading-user-bubble');
+    const readingNativeTool = document.getElementById('reading-native-tool');
+    const readingCode = document.getElementById('reading-code');
+    const readingViewportStyle = readingViewport.getAttribute('style');
+    const originalReadingScroll = readingViewport.scrollTop;
+    const originalWindowScroll = {x: scrollX, y: scrollY};
+    const baseReadingConfig = {imageData: fixtureImage, opacity: 0, blur: 0, panelOpacity: requestedAlpha};
+    const settleReading = async () => { await wait(); await wait(); };
+    const plates = () => [...document.querySelectorAll('[data-chatgpt-backdrop-reading-layer]')];
+    const visiblePlates = () => plates().filter(node => getComputedStyle(node).display !== 'none');
+    const clippedRect = node => {
+      const rect = node.getBoundingClientRect();
+      const clip = getComputedStyle(node).clipPath || getComputedStyle(node).webkitClipPath;
+      const tokens = /^inset\(([^)]*)\)$/.exec(clip || '')?.[1].split(/\s+round\s+/)[0].trim().split(/\s+/).map(parseFloat) || [];
+      const inset = tokens.length === 1 ? [tokens[0], tokens[0], tokens[0], tokens[0]] :
+        tokens.length === 2 ? [tokens[0], tokens[1], tokens[0], tokens[1]] :
+        tokens.length === 3 ? [tokens[0], tokens[1], tokens[2], tokens[1]] : tokens.length >= 4 ? tokens.slice(0, 4) : [0,0,0,0];
+      return {left: rect.left + inset[3], right: rect.right - inset[1], top: rect.top + inset[0], bottom: rect.bottom - inset[2]};
+    };
+    const viewClip = () => {
+      const rect = readingViewport.getBoundingClientRect();
+      return {left: Math.max(0, rect.left), right: Math.min(innerWidth, rect.right), top: Math.max(0, rect.top), bottom: Math.min(innerHeight, rect.bottom)};
+    };
+    const inside = (inner, outer) => inner.left >= outer.left - 1 && inner.right <= outer.right + 1 && inner.top >= outer.top - 1 && inner.bottom <= outer.bottom + 1;
+    const intersects = (a, b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
+    const backdropBlur = node => getComputedStyle(node).getPropertyValue('backdrop-filter') || getComputedStyle(node).getPropertyValue('-webkit-backdrop-filter');
+    const maskImage = node => getComputedStyle(node).getPropertyValue('mask-image') || getComputedStyle(node).getPropertyValue('-webkit-mask-image');
+    api.apply(baseReadingConfig); await settleReading();
+    test('older theme payloads default to None readability', api.status().readingMode === 'none' && api.status().readingSurfaceCount === 0 && plates().length === 0);
+    test('None preserves a pre-existing unrelated column marker', readingColumn.getAttribute('data-chatgpt-backdrop-reading') === 'prior-reading');
+    const readingNoneBaseline = document.documentElement.outerHTML;
+    const originalUserColor = getComputedStyle(readingUser).backgroundColor;
+    const originalUserRadius = getComputedStyle(readingUser).borderRadius;
+    const originalToolColor = getComputedStyle(readingNativeTool).backgroundColor;
+    const originalToolRadius = getComputedStyle(readingNativeTool).borderRadius;
+    const originalReadingCodeColor = getComputedStyle(readingCode).backgroundColor;
+    const originalReadingCodeShadow = getComputedStyle(readingCode).boxShadow;
+    const originalColumnPosition = getComputedStyle(readingColumn).position;
+    readingViewport.scrollTop = 0;
+    scrollTo(0, Math.max(0, readingViewport.getBoundingClientRect().top + scrollY - 64)); await settleReading();
+    const readingDiagnostic = {modes: []};
+    for (const readingMode of ['sheet', 'cards', 'focus']) {
+      api.apply({...baseReadingConfig, readingMode, readingOpacity: 0.64, readingBlur: 9}); await settleReading();
+      const all = plates(); const visible = visiblePlates(); const expected = readingMode === 'cards' ? 4 : 1;
+      readingDiagnostic.modes.push({mode: readingMode, total: all.length, visible: visible.length,
+        rects: visible.map(node => ({...clippedRect(node), alpha: alpha(node), blur: backdropBlur(node), mask: maskImage(node)}))});
+      test(readingMode + ' reports its selected mode and actual visible surface count', api.status().readingMode === readingMode && api.status().readingSurfaceCount === visible.length);
+      test(readingMode + ' paints the expected independent surface count', all.length === expected && visible.length === expected);
+      test(readingMode + ' plates use independent reading opacity', visible.every(node => Math.abs(alpha(node) - 0.64) < 0.005));
+      test(readingMode + ' leaves the surrounding sidebar opacity unchanged', Math.abs(alpha(nativeSidebar) - requestedAlpha) < 0.005);
+      test(readingMode + ' applies local blur behind content only', visible.every(node => /blur\(9px\)/.test(backdropBlur(node))) && getComputedStyle(readingText).filter === 'none' && getComputedStyle(readingColumn).filter === 'none' && getComputedStyle(readingViewport).filter === 'none' && getComputedStyle(readingText).opacity === '1');
+      test(readingMode + ' plates remain hidden from accessibility and pointer input', visible.every(node => getComputedStyle(node).pointerEvents === 'none' && node.closest('[aria-hidden="true"]') !== null));
+      test(readingMode + ' reading paint stays inside the conversation viewport', visible.every(node => inside(clippedRect(node), viewClip())));
+      test(readingMode + ' leaves native user bubble styling unchanged', getComputedStyle(readingUser).backgroundColor === originalUserColor && getComputedStyle(readingUser).borderRadius === originalUserRadius);
+      test(readingMode + ' leaves native result card styling unchanged', getComputedStyle(readingNativeTool).backgroundColor === originalToolColor && getComputedStyle(readingNativeTool).borderRadius === originalToolRadius);
+      test(readingMode + ' preserves native code formatting and shadow', getComputedStyle(readingCode).backgroundColor === originalReadingCodeColor && getComputedStyle(readingCode).boxShadow === originalReadingCodeShadow);
+      test(readingMode + ' preserves menu and dialog surfaces', getComputedStyle(nativeMenu).backgroundColor === menuBG && getComputedStyle(nativeMenu).boxShadow === menuShadow && getComputedStyle(dialog).backgroundColor === dialogBG);
+      test(readingMode + ' does not rewrite native layout or unrelated markers', getComputedStyle(readingColumn).position === originalColumnPosition && readingColumn.getAttribute('data-chatgpt-backdrop-reading') === 'prior-reading');
+      test(readingMode + ' avoids a second tint on assistant wrappers', alpha(document.getElementById('reading-assistant-inner')) === 0);
+      if (readingMode === 'sheet') {
+        const rect = visible[0]?.getBoundingClientRect(); const col = readingColumn.getBoundingClientRect();
+        test('Sheet follows the native bounded chat column width', !!rect && Math.abs(rect.left - col.left) < 1 && Math.abs(rect.width - col.width) < 1);
+        test('Sheet is one continuous rounded plate including the composer area', visible.length === 1 && parseFloat(getComputedStyle(visible[0]).borderRadius) >= 12 && clippedRect(visible[0]).bottom >= Math.min(readingFooter.getBoundingClientRect().bottom, viewClip().bottom) - 1);
+        test('Sheet has no feather mask', maskImage(visible[0]) === 'none');
+      } else if (readingMode === 'cards') {
+        const cardRects = visible.map(clippedRect);
+        test('Cards do not duplicate nested assistant or tool wrappers', cardRects.length === 4 && cardRects.filter(rect => intersects(rect, document.getElementById('reading-assistant').getBoundingClientRect())).length === 1);
+        test('Cards include source-shaped local and virtualized activity groups', cardRects.some(rect => intersects(rect, document.getElementById('reading-local-group').getBoundingClientRect())) && cardRects.some(rect => intersects(rect, document.getElementById('reading-virtual-group').getBoundingClientRect())));
+        test('Cards do not paint user input groups', cardRects.every(rect => !intersects(rect, document.getElementById('reading-user').getBoundingClientRect()) && !intersects(rect, document.getElementById('reading-local-user-group').getBoundingClientRect())));
+        test('Cards retain separate rounded backgrounds without a global column plate', visible.every(node => node.getAttribute('data-chatgpt-backdrop-reading-kind') === 'card' && parseFloat(getComputedStyle(node).borderRadius) >= 12 && maskImage(node) === 'none'));
+      } else {
+        const rect = visible[0]?.getBoundingClientRect(); const col = readingColumn.getBoundingClientRect();
+        test('Focus uses a feathered mask with no hard card boundary', visible.length === 1 && /linear-gradient\(/.test(maskImage(visible[0])) && getComputedStyle(visible[0]).borderRadius === '0px' && getComputedStyle(visible[0]).boxShadow === 'none');
+        test('Focus reaches into the gutter while staying within the main pane', !!rect && rect.width >= col.width && rect.width <= readingViewport.getBoundingClientRect().width + 1);
+      }
+      const selection = getSelection(); const range = document.createRange(); range.selectNodeContents(readingText); selection.removeAllRanges(); selection.addRange(range);
+      test(readingMode + ' keeps conversation text selectable', selection.toString() === readingText.textContent); selection.removeAllRanges();
+      const control = document.getElementById('reading-control'); const beforeControl = readingControlClicks;
+      control.click();
+      test(readingMode + ' keeps native result controls functional', readingControlClicks === beforeControl + 1 && getComputedStyle(control).pointerEvents === 'auto');
+      const beforeLink = readingLinkClicks; document.getElementById('reading-link').click();
+      test(readingMode + ' keeps links functional', readingLinkClicks === beforeLink + 1);
+    }
+    // Reuse active reading plates across a native theme change, preserving
+    // independent strength and the light theme's neutral white backplate.
+    document.documentElement.className = 'light'; await settleReading();
+    for (const readingMode of ['sheet', 'cards', 'focus']) {
+      api.apply({...baseReadingConfig, readingMode, readingOpacity: 0.64, readingBlur: 9}); await settleReading();
+      const expected = readingMode === 'cards' ? 4 : 1;
+      test(readingMode + ' uses white reading paint at independent strength in light mode', visiblePlates().length === expected && visiblePlates().every(node => {
+        const channels = getComputedStyle(node).backgroundColor.match(/[\d.]+/g).map(Number);
+        return channels.slice(0, 3).every(value => value === 255) && Math.abs(alpha(node) - 0.64) < 0.005 && /blur\(9px\)/.test(backdropBlur(node));
+      }));
+      test(readingMode + ' preserves light native panel tint and sharp conversation content', Math.abs(alpha(nativeSidebar) - requestedAlpha) < 0.005 && getComputedStyle(nativeSidebar).backgroundColor.startsWith('rgba(255, 255, 255,') && getComputedStyle(readingText).filter === 'none' && getComputedStyle(readingText).opacity === '1');
+    }
+    document.documentElement.className = 'dark'; await settleReading();
+    // Route changes must clean detached scopes and discover the returning
+    // conversation without requiring Apply or restarting the wallpaper.
+    const readingRouteMain = document.getElementById('main');
+    const readingRouteLayer = document.querySelector('[data-chatgpt-backdrop-layer]');
+    const readingRouteImage = readingRouteLayer.firstElementChild;
+    const readingRouteURL = readingRouteImage.style.backgroundImage;
+    for (const readingMode of ['sheet', 'cards', 'focus']) {
+      api.apply({...baseReadingConfig, readingMode, readingOpacity: 0.64, readingBlur: 9}); await settleReading();
+      const emptyRoute = document.createElement('main');
+      emptyRoute.id = 'reading-route-away'; emptyRoute.textContent = 'Another native route';
+      readingRouteMain.replaceWith(emptyRoute); await settleReading();
+      test(readingMode + ' navigation away removes reading plates and detached scope markers', api.status().readingMode === readingMode && plates().length === 0 && !readingViewport.hasAttribute('data-chatgpt-backdrop-reading'));
+      emptyRoute.replaceWith(readingRouteMain);
+      scrollTo(0, Math.max(0, readingViewport.getBoundingClientRect().top + scrollY - 64)); await settleReading();
+      const expected = readingMode === 'cards' ? 4 : 1;
+      test(readingMode + ' navigation back recreates one treatment per target without replacing wallpaper', api.status().readingMode === readingMode && plates().length === expected && visiblePlates().length === expected && readingViewport.hasAttribute('data-chatgpt-backdrop-reading') && document.querySelector('[data-chatgpt-backdrop-layer]') === readingRouteLayer && readingRouteLayer.firstElementChild === readingRouteImage && readingRouteImage.style.backgroundImage === readingRouteURL);
+    }
+    api.apply({...baseReadingConfig, readingMode: 'cards', readingOpacity: 0.64, readingBlur: 9}); await settleReading();
+    const incomingResponse = document.createElement('section');
+    incomingResponse.setAttribute('data-content-search-unit-key', 'incoming-assistant');
+    incomingResponse.innerHTML = '<div data-message-author-role="assistant"><p>A newly streamed response group.</p></div>';
+    readingColumn.prepend(incomingResponse); await settleReading();
+    test('Cards automatically discovers newly mounted assistant groups without duplicate nested cards', plates().length === 5 && visiblePlates().filter(node => intersects(clippedRect(node), incomingResponse.getBoundingClientRect())).length === 1 && alpha(incomingResponse.firstElementChild) === 0);
+    incomingResponse.remove(); await settleReading();
+    test('Cards removes the plate for a detached assistant group', plates().length === 4 && api.status().readingMode === 'cards');
+    api.apply({...baseReadingConfig, readingMode: 'sheet', readingOpacity: 0.64, readingBlur: 9}); await settleReading();
+    const stableSheet = visiblePlates()[0]; let idleElementMutations = 0;
+    const idleObserver = new MutationObserver(records => { idleElementMutations += records.reduce((count, record) => count + [...record.addedNodes, ...record.removedNodes].filter(node => node.nodeType === 1).length, 0); });
+    idleObserver.observe(layer, {childList: true, subtree: true}); await settleReading(); idleObserver.disconnect();
+    test('an idle reading mode does not continuously recreate owned layers', idleElementMutations === 0 && visiblePlates()[0] === stableSheet);
+    readingViewport.style.width = '620px'; await settleReading();
+    const resizedSheet = visiblePlates()[0]?.getBoundingClientRect(); const resizedColumn = readingColumn.getBoundingClientRect();
+    test('Sheet tracks native column resizing', !!resizedSheet && Math.abs(resizedSheet.width - resizedColumn.width) < 1 && Math.abs(resizedSheet.left - resizedColumn.left) < 1);
+    api.apply({...baseReadingConfig, readingMode: 'cards', readingOpacity: 0.64, readingBlur: 9}); await settleReading();
+    readingViewport.scrollTop = 90; await settleReading();
+    test('Cards stay clipped while the native transcript scrolls', readingViewport.scrollTop > 0 && visiblePlates().length > 0 && visiblePlates().every(node => inside(clippedRect(node), viewClip())));
+    readingViewport.scrollTop = 0; await settleReading();
+    const gapStyle = document.createElement('style'); gapStyle.textContent = '#reading-column{gap:2px!important}'; document.head.append(gapStyle); await settleReading();
+    const closeCardRects = visiblePlates().map(clippedRect).sort((a,b) => a.top - b.top);
+    test('Cards do not multiply opacity when native response groups have small gaps', closeCardRects.length > 1 && closeCardRects.every((rect,index) => index === 0 || closeCardRects[index-1].bottom <= rect.top + 1));
+    gapStyle.remove(); await settleReading();
+    const collapseWrapper = document.getElementById('reading-collapse-wrapper');
+    const collapseClass = collapseWrapper.getAttribute('class'); collapseWrapper.classList.add('reading-test-collapsed'); await settleReading();
+    test('collapsed overflow groups do not leave ghost Cards behind', collapseWrapper.getBoundingClientRect().height === 0 && document.getElementById('reading-tool').getBoundingClientRect().height > 0 && visiblePlates().length === 3);
+    if (collapseClass === null) collapseWrapper.removeAttribute('class'); else collapseWrapper.setAttribute('class', collapseClass); await settleReading();
+    test('expanding a native overflow group automatically restores one card', visiblePlates().length === 4 && api.status().readingSurfaceCount === 4);
+    const contentsUnit = document.getElementById('reading-assistant'); const contentsClass = contentsUnit.getAttribute('class');
+    contentsUnit.classList.add('reading-test-contents'); await settleReading();
+    test('display-contents search wrappers fall back to one visible assistant card', contentsUnit.getBoundingClientRect().width === 0 && document.getElementById('reading-assistant-inner').getBoundingClientRect().width > 0 && visiblePlates().length === 4);
+    if (contentsClass === null) contentsUnit.removeAttribute('class'); else contentsUnit.setAttribute('class', contentsClass); await settleReading();
+    api.apply({...baseReadingConfig, readingMode: 'sheet', readingOpacity: 0.64, readingBlur: 9}); await settleReading();
+    readingViewport.style.visibility = 'hidden'; await settleReading();
+    test('CSS-hidden conversation panes leave no ghost reading plate or scope', readingViewport.getBoundingClientRect().width > 0 && visiblePlates().length === 0 && api.status().readingSurfaceCount === 0 && !readingViewport.hasAttribute('data-chatgpt-backdrop-reading'));
+    if (readingViewportStyle === null) readingViewport.removeAttribute('style'); else readingViewport.setAttribute('style', readingViewportStyle);
+    await settleReading();
+    test('restoring pane visibility automatically reactivates exactly one reading plate', visiblePlates().length === 1 && api.status().readingSurfaceCount === 1);
+    const readingMain = document.getElementById('main'); const readingMainClass = readingMain.getAttribute('class');
+    readingMain.classList.add('reading-test-hidden'); await settleReading();
+    test('transparent native ancestor panes do not leave a reading overlay behind', getComputedStyle(readingMain).opacity === '0' && readingViewport.getBoundingClientRect().width > 0 && visiblePlates().length === 0 && !readingViewport.hasAttribute('data-chatgpt-backdrop-reading'));
+    if (readingMainClass === null) readingMain.removeAttribute('class'); else readingMain.setAttribute('class', readingMainClass);
+    await settleReading();
+    test('restoring an ancestor class automatically reactivates one reading plate', visiblePlates().length === 1 && api.status().readingSurfaceCount === 1);
+    api.apply({...baseReadingConfig, readingMode: 'sheet', readingOpacity: 4, readingBlur: 99}); await settleReading();
+    test('reading opacity and blur clamp independently to their limits', visiblePlates().length === 1 && alpha(visiblePlates()[0]) === 1 && /blur\(24px\)/.test(backdropBlur(visiblePlates()[0])) && Math.abs(alpha(nativeSidebar) - requestedAlpha) < 0.005);
+    api.apply({...baseReadingConfig, readingMode: 'sheet', readingOpacity: -5, readingBlur: -5}); await settleReading();
+    test('zero reading strength does not dim text or affect native panels', visiblePlates().length === 1 && alpha(visiblePlates()[0]) === 0 && (backdropBlur(visiblePlates()[0]) === 'none' || /blur\(0px\)/.test(backdropBlur(visiblePlates()[0]))) && getComputedStyle(readingText).opacity === '1' && Math.abs(alpha(nativeSidebar) - requestedAlpha) < 0.005);
+    for (let cycle = 0; cycle < 3; cycle++) {
+      for (const readingMode of ['sheet', 'cards', 'focus', 'none']) { api.apply({...baseReadingConfig, readingMode}); await settleReading(); }
+    }
+    test('repeated mode switching leaves no reading layers in None', api.status().readingMode === 'none' && api.status().readingSurfaceCount === 0 && plates().length === 0);
+    test('None removes the native reading-scope marker', !readingViewport.hasAttribute('data-chatgpt-backdrop-reading') && readingColumn.getAttribute('data-chatgpt-backdrop-reading') === 'prior-reading');
+    api.apply({...baseReadingConfig, readingMode: 'not-a-mode'}); await settleReading();
+    test('unknown reading modes safely fall back to None', api.status().readingMode === 'none' && plates().length === 0);
+    if (readingViewportStyle === null) readingViewport.removeAttribute('style'); else readingViewport.setAttribute('style', readingViewportStyle);
+    readingViewport.scrollTop = originalReadingScroll; scrollTo(originalWindowScroll.x, originalWindowScroll.y);
+    api.apply(baseReadingConfig); await settleReading();
+    test('None exactly restores the prior active appearance after reading controls', document.documentElement.outerHTML === readingNoneBaseline);
     const old = document.getElementById('main');
     const replacement = document.createElement('main');
     replacement.id = 'replacement'; replacement.innerHTML = '<p>New SPA route</p>';
@@ -814,7 +1223,11 @@ final class Runner: NSObject, WKNavigationDelegate {
     dotsDiagnostic.wrapStyleBeforeCleanup = dotsWrap.getAttribute('style');
     if (dotsWrapStyle === null) dotsWrap.removeAttribute('style'); else dotsWrap.setAttribute('style', dotsWrapStyle);
     dotsDiagnostic.wrapStyleAfterCleanup = dotsWrap.getAttribute('style');
+    api.apply({...baseReadingConfig, readingMode: 'focus', readingOpacity: 0.64, readingBlur: 9});
+    scrollTo(0, Math.max(0, readingViewport.getBoundingClientRect().top + scrollY - 64)); await settleReading();
+    test('direct Restore fixture begins with an active reading treatment', api.status().readingMode === 'focus' && visiblePlates().length === 1 && readingViewport.hasAttribute('data-chatgpt-backdrop-reading'));
     api.restore();
+    test('direct Restore removes active reading layers and owned scope markers', plates().length === 0 && !readingViewport.hasAttribute('data-chatgpt-backdrop-reading') && readingColumn.getAttribute('data-chatgpt-backdrop-reading') === 'prior-reading');
     const restoredHTML = document.documentElement.outerHTML;
     let restoreDifferenceIndex = 0;
     while (restoreDifferenceIndex < Math.min(baseline.length, restoredHTML.length) && baseline[restoreDifferenceIndex] === restoredHTML[restoreDifferenceIndex]) restoreDifferenceIndex++;
@@ -881,6 +1294,6 @@ final class Runner: NSObject, WKNavigationDelegate {
       document.getElementById('root').style.visibility = 'hidden';
       scrollTo(0, 0); await wait();
     }
-    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, bottomGapDiagnostic, workSurfaceDiagnostic, dotsDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
+    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, bottomGapDiagnostic, workSurfaceDiagnostic, dotsDiagnostic, readingDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
     """#
 }
