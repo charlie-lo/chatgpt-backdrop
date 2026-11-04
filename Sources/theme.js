@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.1";
+  const VERSION = "1.2.2";
   const GLOBAL = "__chatGPTBackdrop";
   const ROOT_ATTRIBUTE = "data-chatgpt-backdrop";
   const SURFACE_ATTRIBUTE = "data-chatgpt-backdrop-surface";
@@ -42,6 +42,8 @@
   let readingGeometryFrame = 0;
   let readingEventsAttached = false;
 
+  const settingsPageContent = 'div[class~="group/settings"][data-density]';
+  const settingsPageSurface = `[data-app-shell-main-surface] div[class~="electron:bg-surface"]:has(> div.scrollbar-stable > ${settingsPageContent})`;
   const nativeSurfaces = [
     "[data-app-shell-page-surface]",
     "[data-app-shell-main-surface]",
@@ -52,6 +54,9 @@
     'aside.app-shell-left-panel [data-app-shell-left-panel-appearance]',
     'aside.app-shell-left-panel .sidebar-navigation',
     "[data-app-shell-titlebar]",
+    // Main Settings has a separate native page fill. Its cards and previews
+    // live inside settingsPageContent and retain their original appearance.
+    settingsPageSurface,
     // Dots nests an embedded messaging view inside its own embedded shell.
     // Both roots and their direct panes have independent native solid fills.
     ".messaging-root.messaging-embedded",
@@ -67,7 +72,7 @@
   const protectedSurface = [
     "dialog", '[role="dialog"]', '[role="alertdialog"]',
     '[role="menu"]', '[role="listbox"]', "pre", "code", "iframe",
-    '[data-testid="settings-modal"]', '[data-settings-page]'
+    '[data-testid="settings-modal"]', '[data-settings-page]', settingsPageContent
   ].join(",");
 
   function number(value, fallback, minimum, maximum) {
@@ -110,7 +115,17 @@
   }
 
   function isMutedRoute() {
-    return /(?:^|\/)(?:settings|login|auth|oauth|billing|checkout)(?:\/|$)/i.test(location.pathname);
+    if (/(?:^|\/)(?:login|auth|oauth|billing|checkout)(?:\/|$)/i.test(location.pathname)) return true;
+    if (!/(?:^|\/)settings(?:\/|$)/i.test(location.pathname)) return false;
+    // Native routing can be memory-backed. Recognize the page by its layout,
+    // while unknown settings views and protected overlays remain excluded.
+    return !Array.from(document.querySelectorAll(settingsPageSurface))
+      .some(node => {
+        if (node.closest(protectedSurface + ',[hidden],[inert],[aria-hidden="true"]') ||
+            node.getClientRects().length === 0) return false;
+        const visibility = getComputedStyle(node).visibility;
+        return visibility !== "hidden" && visibility !== "collapse";
+      });
   }
 
   function detectMode() {
@@ -489,7 +504,7 @@
   function updateOwnedStyles() {
     if (!config || !layer || !stylesheet) return;
     const root = `html[${ROOT_ATTRIBUTE}="${owner}"]:not([${MUTED_ATTRIBUTE}="${owner}"])`;
-    const outsideProtected = ":not(:is(dialog,dialog *,[role=dialog],[role=dialog] *,[role=alertdialog],[role=alertdialog] *,[role=menu],[role=menu] *,[role=listbox],[role=listbox] *,pre,pre *,code,code *,[data-testid=settings-modal],[data-testid=settings-modal] *,[data-settings-page],[data-settings-page] *))";
+    const outsideProtected = `:not(:is(dialog,dialog *,[role=dialog],[role=dialog] *,[role=alertdialog],[role=alertdialog] *,[role=menu],[role=menu] *,[role=listbox],[role=listbox] *,pre,pre *,code,code *,[data-testid=settings-modal],[data-testid=settings-modal] *,[data-settings-page],[data-settings-page] *,${settingsPageContent},${settingsPageContent} *))`;
     const dotsFooter = `.messaging-root.messaging-embedded[${SURFACE_ATTRIBUTE}="${owner}"] .conversation-footer`;
     const composer = '[class*="_ComposerLayoutRoot_"]:is([data-composer-surface-variant="default"],[data-composer-surface-variant="opaque"],[data-composer-surface-variant="secondary"])';
     const environmentPanel = '[data-in-progress-fixed-content][class~="group/environment-actions"] .bg-surface-elevated-secondary';

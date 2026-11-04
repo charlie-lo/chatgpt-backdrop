@@ -6,6 +6,10 @@ An original, unofficial Mac utility for image backgrounds in the ChatGPT desktop
 
 Choose a local image, adjust its shade, blur, panel opacity and position, then restore the original appearance whenever you want.
 
+## Version 1.2.2 — Settings backgrounds
+
+The main Settings page now shows the selected wallpaper around its cards. Cards, controls, previews and the action footer keep their native appearance. Embedded settings and protected dialogs retain their original styling; Restore Original restores the page background.
+
 ## Version 1.2.1 — Dots header fade
 
 Removes the separate decorative gradient below the Dots toolbar in ChatGPT build 26.1027.61615. The header buttons, profile controls and anchor positioning retain their native appearance and behavior. Restore Original returns the native gradient.
