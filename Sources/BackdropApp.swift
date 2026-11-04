@@ -5,15 +5,6 @@ import UniformTypeIdentifiers
 import Security
 import Darwin
 
-struct BackdropPosition: Codable { var x = 50.0; var y = 50.0 }
-struct BackdropSettings: Codable {
-    var imageData: String
-    var opacity = 0.40
-    var blur = 0.0
-    var panelOpacity = 0.72
-    var position = BackdropPosition()
-}
-
 enum BackdropFailure: LocalizedError {
     case message(String)
     var errorDescription: String? { if case .message(let text) = self { return text }; return nil }
@@ -363,6 +354,8 @@ enum OfficialApp {
             func clamp(_ x: Double, _ lower: Double, _ upper: Double) -> Double { x.isFinite ? min(upper, max(lower, x)) : lower }
             imported.opacity = clamp(imported.opacity, 0, 0.85); imported.blur = clamp(imported.blur, 0, 24)
             imported.panelOpacity = clamp(imported.panelOpacity, 0, 1)
+            imported.readingOpacity = clamp(imported.readingOpacity, 0, 1)
+            imported.readingBlur = clamp(imported.readingBlur, 0, 24)
             imported.position.x = clamp(imported.position.x, 0, 100); imported.position.y = clamp(imported.position.y, 0, 100)
             settings = imported; image = media.image; isAnimated = media.isAnimated
             mediaFrameCount = media.frameCount
@@ -460,21 +453,38 @@ struct BackdropView: View {
                     Text("Preview shows the image and opacity. Your ChatGPT layout stays the same.")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
-                VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 9) {
-                        Text("01 / CHOOSE YOUR SCENERY").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                        Button(action: model.chooseImage) { Label("Choose Background…", systemImage: "photo.badge.plus").frame(maxWidth: .infinity).padding(.vertical, 6) }.controlSize(.large)
-                        Text("GIF, PNG, JPEG, WebP, HEIC, TIFF").font(.system(size: 10)).foregroundStyle(.tertiary)
-                    }
-                    Divider()
-                    VStack(alignment: .leading, spacing: 15) {
-                        Text("02 / SET THE MOOD").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                        slider("Dim Overlay", value: $model.settings.opacity, range: 0...0.85, display: "\(Int(model.settings.opacity * 100))%")
-                        slider("Background Blur", value: $model.settings.blur, range: 0...24, display: "\(Int(model.settings.blur)) px")
-                        slider("Panel Opacity", value: $model.settings.panelOpacity, range: 0...1, display: "\(Int(model.settings.panelOpacity * 100))%")
-                        slider("Horizontal Position", value: $model.settings.position.x, range: 0...100, display: "\(Int(model.settings.position.x))%")
-                        slider("Vertical Position", value: $model.settings.position.y, range: 0...100, display: "\(Int(model.settings.position.y))%")
-                    }
+                VStack(alignment: .leading, spacing: 14) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            VStack(alignment: .leading, spacing: 9) {
+                                Text("01 / CHOOSE YOUR SCENERY").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                                Button(action: model.chooseImage) { Label("Choose Background…", systemImage: "photo.badge.plus").frame(maxWidth: .infinity).padding(.vertical, 6) }.controlSize(.large)
+                                Text("GIF, PNG, JPEG, WebP, HEIC, TIFF").font(.system(size: 10)).foregroundStyle(.tertiary)
+                            }
+                            Divider()
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("02 / READING MODE").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                                Picker("Reading Mode", selection: $model.settings.readingMode) {
+                                    ForEach(ReadingMode.allCases) { mode in Text(mode.title).tag(mode) }
+                                }.pickerStyle(.segmented).labelsHidden().accessibilityLabel("Reading Mode")
+                                    .onChange(of: model.settings.readingMode) { model.changed() }
+                                Text(model.settings.readingMode.summary).font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                                if model.settings.readingMode != .none {
+                                    slider("Reading Opacity", value: $model.settings.readingOpacity, range: 0...1, display: "\(Int(model.settings.readingOpacity * 100))%")
+                                    slider("Reading Blur", value: $model.settings.readingBlur, range: 0...24, display: "\(Int(model.settings.readingBlur)) px")
+                                }
+                            }
+                            Divider()
+                            VStack(alignment: .leading, spacing: 15) {
+                                Text("03 / SET THE MOOD").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                                slider("Dim Overlay", value: $model.settings.opacity, range: 0...0.85, display: "\(Int(model.settings.opacity * 100))%")
+                                slider("Background Blur", value: $model.settings.blur, range: 0...24, display: "\(Int(model.settings.blur)) px")
+                                slider("Panel Opacity", value: $model.settings.panelOpacity, range: 0...1, display: "\(Int(model.settings.panelOpacity * 100))%")
+                                slider("Horizontal Position", value: $model.settings.position.x, range: 0...100, display: "\(Int(model.settings.position.x))%")
+                                slider("Vertical Position", value: $model.settings.position.y, range: 0...100, display: "\(Int(model.settings.position.y))%")
+                            }
+                        }.padding(.trailing, 6)
+                    }.frame(height: 404)
                     HStack { Button("Import Theme…", action: model.importTheme); Spacer(); Button("Save Theme…", action: model.exportTheme) }.font(.system(size: 11)).buttonStyle(.link)
                 }.frame(width: 280)
             }
@@ -533,17 +543,78 @@ struct BackdropView: View {
                     }.padding(16).frame(width: 143).background(Color(red: 0.08, green: 0.09, blue: 0.12).opacity(model.settings.panelOpacity))
                     VStack(spacing: 0) {
                         HStack { Text("ChatGPT").font(.system(size: 10, weight: .medium)); Image(systemName: "chevron.down").font(.system(size: 8)); Spacer(); Image(systemName: "ellipsis").font(.system(size: 10)) }.padding(18)
-                        Spacer()
-                        Image(systemName: "sparkle").font(.system(size: 25, weight: .light)).foregroundStyle(accent).padding(.bottom, 12)
-                        Text("Where shall we begin?").font(.system(size: 19, weight: .medium))
-                        Text("A favorite view. A little room to think.").font(.system(size: 10)).foregroundStyle(.white.opacity(0.7)).padding(.top, 9)
-                        Spacer()
-                        HStack { Text("Send a message…").foregroundStyle(.white.opacity(0.6)); Spacer(); Image(systemName: "arrow.up.circle.fill").foregroundStyle(accent) }
-                            .font(.system(size: 11)).padding(14).background(Color(red: 0.10, green: 0.11, blue: 0.15).opacity(model.settings.panelOpacity), in: RoundedRectangle(cornerRadius: 16)).overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.12))).padding(.horizontal, 20)
-                        Text("A different view, the same conversations.").font(.system(size: 8)).foregroundStyle(.white.opacity(0.45)).padding(.vertical, 12)
+                        previewConversation
                     }
                 }
             }
         }
+    }
+
+    private var previewConversation: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Spacer(minLength: 25)
+                Text("Help me plan a quiet weekend.")
+                    .font(.system(size: 10)).padding(.horizontal, 12).padding(.vertical, 9)
+                    .background(accent.opacity(0.28), in: RoundedRectangle(cornerRadius: 13))
+            }
+            VStack(alignment: .leading, spacing: 7) {
+                Text("Start with a little breathing room.").font(.system(size: 12, weight: .semibold))
+                Text("Choose one place to explore and leave the rest of the day open. A short list makes it easier to enjoy the moment.")
+                    .font(.system(size: 11)).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                if model.settings.readingMode == .cards { readingPlate(rounded: true) }
+            }
+            HStack(spacing: 9) {
+                Image(systemName: "calendar").foregroundStyle(accent)
+                Text("A simple weekend plan").font(.system(size: 10, weight: .medium))
+                Spacer()
+                Text("3 ideas").font(.system(size: 9)).foregroundStyle(.secondary)
+            }
+            .padding(11)
+            .background {
+                if model.settings.readingMode == .cards { readingPlate(rounded: true) }
+                else { RoundedRectangle(cornerRadius: 11).fill(.white.opacity(0.07)) }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 11).stroke(.white.opacity(0.10)))
+            Spacer(minLength: 0)
+            HStack { Text("Send a message…").foregroundStyle(.white.opacity(0.6)); Spacer(); Image(systemName: "arrow.up.circle.fill").foregroundStyle(accent) }
+                .font(.system(size: 11)).padding(14)
+                .background(Color(red: 0.10, green: 0.11, blue: 0.15).opacity(model.settings.panelOpacity), in: RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.12)))
+            Text("Illustrative conversation · Your chat layout stays the same.")
+                .font(.system(size: 8)).foregroundStyle(.white.opacity(0.55)).frame(maxWidth: .infinity)
+        }
+        .padding(16)
+        .background {
+            switch model.settings.readingMode {
+            case .sheet:
+                readingPlate(rounded: true).padding(.horizontal, 7).padding(.bottom, 5)
+            case .focus:
+                readingPlate(rounded: false).mask {
+                    LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.17), .init(color: .black, location: 0.83), .init(color: .clear, location: 1)], startPoint: .leading, endPoint: .trailing)
+                }
+            case .none, .cards:
+                Color.clear
+            }
+        }
+    }
+
+    private func readingPlate(rounded: Bool) -> some View {
+        ZStack {
+            if model.settings.readingBlur > 0 {
+                Rectangle().fill(.ultraThinMaterial).opacity(model.settings.readingBlur / 24)
+            }
+            Color.black.opacity(model.settings.readingOpacity)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: rounded ? 16 : 0))
+        .overlay {
+            if rounded { RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.10)) }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

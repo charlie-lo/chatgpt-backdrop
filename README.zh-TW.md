@@ -4,6 +4,21 @@
 
 原創、非官方的 Mac 圖片背景工具。可選自己的圖片，調整遮罩、模糊、面板透明度與圖片位置，並恢復 ChatGPT 原本的外觀。
 
+## 即將推出的 1.2.0 — 閱讀模式
+
+Build 10 在既有背景控制項之外加入可選的閱讀效果。
+
+新增 **Reading Mode**，提供四個單字選項：
+
+- **None**：保留原本外觀；舊主題也預設使用這個模式。
+- **Sheet**：在聊天欄後方放一整片半透明閱讀底板。
+- **Cards**：為回覆與工具群組分別加上閱讀卡片。
+- **Focus**：在聊天室中央加上柔和底色，邊緣漸淡，不加卡片框線。
+
+**Reading Opacity** 與 **Reading Blur** 獨立控制閱讀效果，不影響側欄的 Panel Opacity。文字與按鈕維持清晰，閱讀底板會跟隨實際聊天欄寬度與捲動範圍；選 None 可移除閱讀效果並保留桌布。設定會隨主題儲存與匯入。沒有辨識到聊天欄的新頁面或不支援畫面不會加入底板。
+
+四選項需要開啟新版 App。舊版仍連接中時，先儲存主題並記下 **Advanced → Local Port**，再結束舊版；新版填入同一個埠號按 **Connect**，匯入主題並套用，即可沿用連線而無須重啟 ChatGPT。
+
 ## 1.1.5 — 整合面板覆蓋修正
 
 整合底部縫隙、工作模式面板透明度、Dots 背景及多視窗支援。套用背景時，更新後的樣式引擎會替換先前已載入的版本。
@@ -53,7 +68,7 @@ Panel Opacity 現在也會控制 Edit environment 按鈕、Choose project / This
 
 1. 先執行 `zsh build.sh`，再雙擊產生的 **ChatGPT Backdrop.app**。
 2. 按 **Choose Background…** 選擇本機圖片或 GIF，或先用內附的 Twilight Hills 範例。
-3. 調整右側滑桿；**Save Theme…** 可將圖片和設定一起存成 JSON，下次再用 **Import Theme…** 匯入。
+3. 調整右側滑桿並選擇 **None / Sheet / Cards / Focus**；**Save Theme…** 可將圖片和設定一起存成 JSON，下次再用 **Import Theme…** 匯入。
 4. 等 ChatGPT 目前的工作完成，再按 **Apply Background**。**首次套用會要求確認重新啟動 ChatGPT，這會中斷目前工作。**
 5. 按 **Restore Original** 可清除背景；正常結束工具時也會嘗試清除。
 
@@ -88,10 +103,13 @@ zsh build.sh
 ```sh
 zsh Tests/run.sh          # 只連線至測試程式自己的 127.0.0.1 模擬服務
 zsh Tests/run-theme.sh    # 獨立 WebKit 記憶體頁面，驗證樣式套用與還原
+zsh Tests/run-media.sh    # GIF 保留與靜態圖片解碼
 zsh Tests/run-windows.sh  # 離線多視窗探索、設定更新與清理
+zsh Tests/run-settings.sh # 舊主題相容性與閱讀模式序列化
+node --test .github/scripts/codex-gate.test.cjs # 自動合併規則
 ```
 
-測試不會連接、重啟或修改 ChatGPT。測試環境與結果請見 `Tests/README.md`。
+測試不會連接、重啟或修改 ChatGPT。測試環境與結果請見 [Tests/README.md](Tests/README.md)。PR 會在 macOS CI 執行測試，並遵循 [Codex 審查與自動合併規則](.github/AUTOMATION.md)。
 
 已驗證工具介面、本機傳輸與獨立頁面測試。回歸測試依照目前 App 的側欄延伸區、拖曳控制項、陰影與輸入框結構建立；由於電腦操作工具禁止直接檢視 ChatGPT 視窗，實際視覺效果仍需你套用後確認。
 
