@@ -213,6 +213,8 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
         .settings-preview-fixture{background:rgb(29,30,31);border-radius:6px}
         .settings-footer-fixture{height:24px;flex:none;background:var(--fixture-settings-surface,rgb(24,24,24))}
         .settings-negative-fixtures{display:none}
+        .settings-visibility-hidden{visibility:hidden}
+        .settings-display-none{display:none!important}
 
         /* Native utility classes consume semantic tokens inherited from the
            selected Accent; composer panel paint must not replace these tokens. */
@@ -688,7 +690,8 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
       <div id="settings-scroll" class="settings-scroll-fixture flex-1 scrollbar-stable overflow-y-auto"><div id="settings-group" class="settings-group-fixture group/settings mx-auto flex w-full flex-col" data-density="default">
         <header>General</header><div class="flex flex-col"><section id="settings-card" class="settings-card-fixture"><button id="settings-toggle" role="switch" type="button" aria-checked="false" onclick="window.settingsControlClicks=(window.settingsControlClicks||0)+1">Native setting</button><input id="settings-input" type="text" value="Original setting"><div>Native card text</div><article id="settings-preview" class="settings-preview-fixture" data-message-author-role="assistant">Native settings preview</article></section></div>
       </div></div><footer id="settings-footer" class="settings-footer-fixture">Native action footer</footer></div>`;
-    document.getElementById('root').append(settingsHost);
+    const settingsAncestor = document.createElement('div'); settingsAncestor.id = 'settings-ancestor';
+    settingsAncestor.append(settingsHost); document.getElementById('root').append(settingsAncestor);
     const settingsLayout = document.getElementById('settings-layout');
     const settingsScroll = document.getElementById('settings-scroll');
     const settingsGroup = document.getElementById('settings-group');
@@ -939,22 +942,61 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
       test('an unknown settings layout retains the original paused protection', api.status().mode === 'paused' && getComputedStyle(settingsWallpaperLayer).display === 'none');
       settingsPlaceholder.replaceWith(settingsLayout); await wait();
       test('mounting a recognized settings page resumes the wallpaper without Apply', api.status().mode !== 'paused' && getComputedStyle(settingsWallpaperLayer).display !== 'none' && alpha(settingsLayout) === 0);
+      // Mount a cached layout while hidden, then reveal it using only an
+      // attribute update. Neither reveal nor later transitions may rely on
+      // Apply, a route event, or inserting/removing a DOM element.
+      settingsLayout.hidden = true;
+      settingsLayout.replaceWith(settingsPlaceholder); await wait();
+      settingsPlaceholder.replaceWith(settingsLayout); await wait();
+      test('mounting a cached hidden settings page keeps its wallpaper paused', api.status().mode === 'paused' && getComputedStyle(settingsWallpaperLayer).display === 'none');
+      settingsLayout.removeAttribute('hidden'); await wait();
+      test('revealing an already mounted settings layout resumes wallpaper without Apply', api.status().mode !== 'paused' && getComputedStyle(settingsWallpaperLayer).display !== 'none' && alpha(settingsLayout) === 0);
       const cachedSettingsCases = [];
-      for (const [attribute, value] of [['hidden', ''], ['inert', ''], ['aria-hidden', 'true'], ['role', 'dialog']]) {
-        settingsHost.setAttribute(attribute, value);
-        api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: requestedAlpha}); await wait();
-        cachedSettingsCases.push({attribute, paused: api.status().mode === 'paused' && getComputedStyle(settingsWallpaperLayer).display === 'none'});
-        settingsHost.removeAttribute(attribute);
-        api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: requestedAlpha}); await wait();
+      const settingsWallpaperPaused = () => api.status().mode === 'paused' && document.documentElement.getAttribute('data-chatgpt-backdrop-muted') === document.documentElement.getAttribute('data-chatgpt-backdrop') && getComputedStyle(settingsWallpaperLayer).display === 'none';
+      const settingsWallpaperActive = () => api.status().mode !== 'paused' && document.documentElement.getAttribute('data-chatgpt-backdrop-muted') !== document.documentElement.getAttribute('data-chatgpt-backdrop') && getComputedStyle(settingsWallpaperLayer).display !== 'none' && alpha(settingsLayout) === 0;
+      for (const [targetName, target] of [['layout', settingsLayout], ['host', settingsHost], ['ancestor', settingsAncestor]]) {
+        for (const [attribute, value] of [['hidden', ''], ['inert', ''], ['aria-hidden', 'true'], ['role', 'dialog'], ['data-testid', 'settings-modal'], ['data-settings-page', ''], ['style', 'visibility:hidden'], ['style', 'display:none']]) {
+          const original = target.getAttribute(attribute);
+          target.setAttribute(attribute, value); await wait();
+          const paused = settingsWallpaperPaused();
+          if (original === null) target.removeAttribute(attribute); else target.setAttribute(attribute, original);
+          await wait();
+          const resumed = settingsWallpaperActive();
+          cachedSettingsCases.push({target: targetName, attribute, value, paused, resumed});
+          test('settings ' + targetName + ' ' + attribute + '=' + value + ' automatically pauses and resumes wallpaper', paused && resumed);
+        }
+        const originalClass = target.getAttribute('class');
+        for (const className of ['settings-visibility-hidden', 'settings-display-none']) {
+          target.classList.add(className); await wait();
+          const paused = settingsWallpaperPaused();
+          if (originalClass === null) target.removeAttribute('class'); else target.setAttribute('class', originalClass);
+          await wait();
+          const resumed = settingsWallpaperActive();
+          cachedSettingsCases.push({target: targetName, className, paused, resumed});
+          test('settings ' + targetName + ' ' + className + ' class automatically pauses and resumes wallpaper', paused && resumed);
+        }
       }
-      settingsHost.setAttribute('style', 'visibility:hidden');
-      api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: requestedAlpha}); await wait();
-      cachedSettingsCases.push({attribute: 'visibility:hidden', paused: api.status().mode === 'paused' && getComputedStyle(settingsWallpaperLayer).display === 'none'});
-      settingsHost.removeAttribute('style');
-      api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: requestedAlpha}); await wait();
+      const settingsStructureCases = [];
+      for (const [targetName, target, attribute, temporaryValue] of [
+        ['content', settingsGroup, 'data-density', null],
+        ['content', settingsGroup, 'class', settingsGroup.className.replace('group/settings', 'unrecognized-settings')],
+        ['layout', settingsLayout, 'class', settingsLayout.className.replace('electron:bg-surface', 'electron:bg-unrecognized')],
+        ['host', settingsHost, 'data-app-shell-main-surface', null]
+      ]) {
+        const original = target.getAttribute(attribute);
+        if (temporaryValue === null) target.removeAttribute(attribute); else target.setAttribute(attribute, temporaryValue);
+        await wait();
+        const paused = settingsWallpaperPaused();
+        if (original === null) target.removeAttribute(attribute); else target.setAttribute(attribute, original);
+        await wait();
+        const resumed = settingsWallpaperActive();
+        settingsStructureCases.push({target: targetName, attribute, paused, resumed});
+        test('restoring recognized settings ' + targetName + ' ' + attribute + ' automatically resumes wallpaper', paused && resumed);
+      }
       settingsPathDiagnostic.cachedSettingsCases = cachedSettingsCases;
-      test('cached hidden inert aria-hidden dialog and invisible settings cannot unpause unknown routes', cachedSettingsCases.every(item => item.paused));
-      test('restoring the visible settings layout resumes its native wallpaper treatment', api.status().mode !== 'paused' && alpha(settingsLayout) === 0 && getComputedStyle(settingsCard).backgroundColor === settingsNative.cardBackground);
+      settingsPathDiagnostic.structureCases = settingsStructureCases;
+      test('automatic settings visibility transitions preserve the original wallpaper layer and decoded image', document.querySelector('[data-chatgpt-backdrop-layer]') === settingsWallpaperLayer && settingsWallpaperLayer.firstElementChild === settingsWallpaperImage && settingsWallpaperImage.style.backgroundImage === settingsWallpaperURL);
+      test('restoring the visible settings layout resumes its native wallpaper treatment', settingsWallpaperActive() && getComputedStyle(settingsCard).backgroundColor === settingsNative.cardBackground);
       const authPaths = [];
       for (const path of ['/login', '/auth/callback', '/billing']) {
         await setFixturePath(path); authPaths.push({path, paused: api.status().mode === 'paused' && getComputedStyle(settingsWallpaperLayer).display === 'none'});
@@ -1522,6 +1564,11 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     test('restores pre-existing marker attributes', document.documentElement.getAttribute('data-chatgpt-backdrop') === 'prior-root' && old.getAttribute('data-chatgpt-backdrop-surface') === 'prior-main');
     test('restore is repeatable', api.restore().restored === true);
     const restoredDocument = document.documentElement.outerHTML;
+    const restoredSettingsAncestorClass = settingsAncestor.getAttribute('class');
+    settingsAncestor.classList.add('settings-visibility-hidden'); await wait();
+    if (restoredSettingsAncestorClass === null) settingsAncestor.removeAttribute('class'); else settingsAncestor.setAttribute('class', restoredSettingsAncestorClass);
+    await wait();
+    test('settings visibility changes after Restore cannot reactivate styling or mutate the restored document', document.documentElement.outerHTML === restoredDocument && !document.querySelector('[data-chatgpt-backdrop-layer]') && getComputedStyle(settingsLayout).backgroundColor === settingsNative.layoutBackground);
     const added = document.createElement('main'); document.body.append(added); await wait();
     test('restore disconnects automatic DOM styling', !added.hasAttribute('data-chatgpt-backdrop-surface') && !document.querySelector('[data-chatgpt-backdrop-layer]'));
     added.remove();

@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.3";
+  const VERSION = "1.2.4";
   const GLOBAL = "__chatGPTBackdrop";
   const ROOT_ATTRIBUTE = "data-chatgpt-backdrop";
   const SURFACE_ATTRIBUTE = "data-chatgpt-backdrop-surface";
@@ -23,6 +23,9 @@
   let appliedImageData = null;
   let treeObserver = null;
   let themeObserver = null;
+  let settingsVisibilityObserver = null;
+  let settingsObservedNodes = new Set();
+  let settingsCandidates = new Set();
   const colorScheme = matchMedia("(prefers-color-scheme: dark)");
   let frame = 0;
   let active = false;
@@ -126,6 +129,34 @@
         const visibility = getComputedStyle(node).visibility;
         return visibility !== "hidden" && visibility !== "collapse";
       });
+  }
+
+  function observeSettingsVisibility() {
+    // Cached Settings layouts can be revealed using only native attributes.
+    // Watch their own ancestor chains, including while the route is paused,
+    // without observing class/style churn throughout messages and composers.
+    settingsCandidates = new Set([
+      ...settingsCandidates,
+      ...document.querySelectorAll(settingsPageContent)
+    ].filter(node => node.isConnected));
+    const wanted = new Set();
+    for (const candidate of settingsCandidates) {
+      // Keep a connected candidate observed if its structural markers are
+      // temporarily removed; restoring those markers must also resynchronize.
+      for (let node = candidate; node; node = node.parentElement) wanted.add(node);
+    }
+    if (wanted.size === settingsObservedNodes.size &&
+        [...wanted].every(node => settingsObservedNodes.has(node))) return;
+    settingsVisibilityObserver?.disconnect();
+    settingsVisibilityObserver = wanted.size ? new MutationObserver(scheduleSync) : null;
+    for (const node of wanted) {
+      settingsVisibilityObserver.observe(node, {
+        attributes: true,
+        attributeFilter: ["class", "style", "hidden", "inert", "aria-hidden", "role",
+          "data-density", "data-app-shell-main-surface", "data-testid", "data-settings-page"]
+      });
+    }
+    settingsObservedNodes = wanted;
   }
 
   function detectMode() {
@@ -459,6 +490,7 @@
 
   function syncSurfaces() {
     if (!active || !document.body) return;
+    observeSettingsVisibility();
     const muted = isMutedRoute();
     if (muted) {
       if (document.documentElement.getAttribute(MUTED_ATTRIBUTE) !== owner) {
@@ -736,7 +768,10 @@ html[${ROOT_ATTRIBUTE}="${owner}"][${MUTED_ATTRIBUTE}="${owner}"] [data-chatgpt-
     document.removeEventListener("DOMContentLoaded", onDocumentReady);
     treeObserver?.disconnect();
     themeObserver?.disconnect();
-    treeObserver = themeObserver = null;
+    settingsVisibilityObserver?.disconnect();
+    treeObserver = themeObserver = settingsVisibilityObserver = null;
+    settingsObservedNodes.clear();
+    settingsCandidates.clear();
     clearReading();
     if (frame) cancelAnimationFrame(frame);
     frame = 0;
