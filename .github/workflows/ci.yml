@@ -56,6 +56,8 @@ jobs:
           persist-credentials: false
       - name: Test local CDP transport and endpoint validation
         run: zsh Tests/run.sh
+      - name: Test multiwindow theme propagation and cleanup
+        run: zsh Tests/run-windows.sh
 
   media-tests:
     name: Media Tests
@@ -67,6 +69,8 @@ jobs:
           persist-credentials: false
       - name: Test images and GIF preservation
         run: zsh Tests/run-media.sh
+      - name: Test theme compatibility and reading settings
+        run: zsh Tests/run-settings.sh
 
   theme-tests:
     name: Theme Tests

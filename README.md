@@ -6,9 +6,28 @@ An original, unofficial Mac utility for image backgrounds in the ChatGPT desktop
 
 Choose a local image, adjust its shade, blur, panel opacity and position, then restore the original appearance whenever you want.
 
-## Version 1.1.6 — Dots header fade
+## Version 1.2.1 — Dots header fade
 
 Removes the separate decorative gradient below the Dots toolbar in ChatGPT build 26.1027.61615. The header buttons, profile controls and anchor positioning retain their native appearance and behavior. Restore Original returns the native gradient.
+
+## Upcoming version 1.2.0 — reading modes
+
+Build 10 adds optional reading treatments to the existing background controls.
+
+Choose **Reading Mode** independently of the sidebar's Panel Opacity:
+
+| Mode | Effect |
+| --- | --- |
+| **None** | Keep the existing appearance. This is the default, including for older themes. |
+| **Sheet** | One continuous translucent surface behind the conversation column. |
+| **Cards** | Separate surfaces behind assistant responses and tool groups. |
+| **Focus** | A soft-edged central tint with no visible card outline. |
+
+**Reading Opacity** and **Reading Blur** control only the reading treatment. Text and controls stay sharp. The treatment follows the recognized conversation viewport and its actual column width; sidebar panels, document editors, menus and embedded browsers retain their own appearance. Modes can be changed live after applying the background. Choosing None removes the reading treatment while keeping the wallpaper.
+
+Reading settings are included in **Save Theme…** and restored by **Import Theme…**. Existing theme files remain compatible and start with None. New or unsupported views without a recognized conversation column receive no reading plate.
+
+Open the new app to access the four-way picker. Save your theme and note **Advanced → Local Port** before quitting an older connected version. To reuse that existing debug session, enter the same port in the new app and choose **Connect**, then import the theme and apply. This avoids restarting ChatGPT; the normal restart confirmation remains available when starting a new session.
 
 ## Version 1.1.5 — combined panel coverage
 
@@ -65,7 +84,7 @@ zsh build.sh
 
 1. Open the generated **ChatGPT Backdrop.app**.
 2. Click **Choose Background…** and select a local image or GIF, or try the included Twilight Hills sample.
-3. Adjust the sliders. **Save Theme…** exports the image and settings together; **Import Theme…** loads them later.
+3. Adjust the sliders and choose **None**, **Sheet**, **Cards**, or **Focus**. **Save Theme…** exports the image and settings together; **Import Theme…** loads them later.
 4. Finish any work currently running in ChatGPT, then click **Apply Background**. **The first application asks you to restart ChatGPT, which interrupts its current work.**
 5. Click **Restore Original** to remove the background. Quitting this tool also attempts to restore the appearance.
 
@@ -104,9 +123,11 @@ zsh Tests/run.sh          # Test-only CDP server on 127.0.0.1
 zsh Tests/run-theme.sh    # Isolated, in-memory WebKit page
 zsh Tests/run-media.sh    # GIF preservation and static image decoding
 zsh Tests/run-windows.sh  # Offline multiwindow discovery, updates and cleanup
+zsh Tests/run-settings.sh # Older themes and reading-mode serialization
+node --test .github/scripts/codex-gate.test.cjs # Automatic merge policy
 ```
 
-Tests never connect to, restart, or modify ChatGPT. See [test details and results](Tests/README.md).
+Tests never connect to, restart, or modify ChatGPT. See [test details and results](Tests/README.md). Pull requests run the macOS suites in CI and follow the [Codex review and automatic merge policy](.github/AUTOMATION.md).
 
 The interface, restart-confirmation cancellation, local transport and isolated styling engine have been tested. The regression fixture models the installed app's native sidebar extension, resize handle, shadow and composer structure. Direct inspection of the protected ChatGPT window was unavailable to the agent, so visual confirmation in your live session remains yours to check after applying the update.
 
