@@ -213,6 +213,22 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
         .settings-preview-fixture{background:rgb(29,30,31);border-radius:6px}
         .settings-footer-fixture{height:24px;flex:none;background:var(--fixture-settings-surface,rgb(24,24,24))}
         .settings-negative-fixtures{display:none}
+
+        /* Native utility classes consume semantic tokens inherited from the
+           selected Accent; composer panel paint must not replace these tokens. */
+        html.dark{--fixture-accent-background:rgb(139,179,255);--fixture-accent-foreground:rgb(16,27,45);--fixture-user-background:rgb(43,67,109)}
+        html.light{--fixture-accent-background:rgb(37,99,235);--fixture-accent-foreground:rgb(255,255,255);--fixture-user-background:rgb(219,232,255)}
+        html.dark[data-fixture-accent=rose]{--fixture-accent-background:rgb(242,154,199);--fixture-accent-foreground:rgb(45,15,31);--fixture-user-background:rgb(102,49,79)}
+        html.light[data-fixture-accent=rose]{--fixture-accent-background:rgb(190,45,115);--fixture-accent-foreground:rgb(255,255,255);--fixture-user-background:rgb(253,222,237)}
+        :root{--color-background-composer-primary:var(--fixture-accent-background);--color-text-composer-primary:var(--fixture-accent-foreground);--color-background-user-message:var(--fixture-user-background);--color-text-user-message:var(--fixture-accent-foreground)}
+        .bg-composer-primary{background-color:var(--color-background-composer-primary)}
+        .text-composer-primary{color:var(--color-text-composer-primary)}
+        .bg-user-message{background-color:var(--color-background-user-message);color:var(--color-text-user-message);border-radius:18px}
+        .fixture-native-accent-control{border:0;border-radius:50%;width:28px;height:28px;outline:0 solid var(--color-background-composer-primary)}
+        .fixture-native-accent-control:focus{outline-width:2px}
+        .fixture-native-accent-control:disabled{opacity:.4;cursor:not-allowed}
+        .fixture-messaging-accent{--messaging-send-background:rgb(36,117,78);--messaging-send-foreground:rgb(245,255,249);--color-background-composer-primary:var(--messaging-send-background);--color-text-composer-primary:var(--messaging-send-foreground)}
+        .fixture-unpersonalized-composer{--color-background-composer-primary:rgb(73,74,75);--color-text-composer-primary:rgb(250,250,250)}
         </style>
         <script>
         \(engine)
@@ -711,7 +727,32 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
       scrollClientHeight: settingsScroll.clientHeight
     };
     test('native settings fixture reproduces its independent opaque page fill', settingsNative.layoutBackground === 'rgb(24, 24, 24)' && settingsNative.cardBackground === 'rgb(34, 34, 34)');
+
+    const accentButtons = prefix => `<button id="${prefix}-send" type="button" class="fixture-native-accent-control bg-composer-primary text-composer-primary">↑</button><button id="${prefix}-stop" type="button" class="fixture-native-accent-control bg-composer-primary text-composer-primary">■</button><button id="${prefix}-disabled" type="button" disabled class="fixture-native-accent-control bg-composer-primary text-composer-primary">↑</button>`;
+    document.getElementById('thread-composer').insertAdjacentHTML('beforeend', accentButtons('accent-thread'));
+    document.getElementById('home-composer-body').insertAdjacentHTML('beforeend', accentButtons('accent-home'));
+    document.getElementById('dots-composer').classList.add('fixture-messaging-accent');
+    document.getElementById('dots-composer').insertAdjacentHTML('beforeend', accentButtons('accent-dots'));
+    document.getElementById('reading-user').insertAdjacentHTML('beforeend', '<div id="accent-user" data-message-author-role="user" class="bg-user-message">A native Accent-colored user bubble.</div>');
+    const accentReferences = document.createElement('div');
+    accentReferences.id = 'accent-native-references'; accentReferences.setAttribute('role', 'menu'); accentReferences.hidden = true;
+    accentReferences.innerHTML = `<div>${accentButtons('accent-reference')}</div><div class="fixture-messaging-accent">${accentButtons('accent-dots-reference')}</div><div class="fixture-unpersonalized-composer">${accentButtons('accent-unpersonalized-reference')}</div><div id="accent-user-reference" data-message-author-role="user" class="bg-user-message">Native reference</div>`;
+    const unpersonalizedComposer = document.createElement('section');
+    unpersonalizedComposer.id = 'accent-unpersonalized-composer'; unpersonalizedComposer.className = '_ComposerLayoutRoot_fixture fixture-unpersonalized-composer';
+    unpersonalizedComposer.setAttribute('data-composer-surface-variant', 'default');
+    unpersonalizedComposer.innerHTML = accentButtons('accent-unpersonalized');
+    document.getElementById('main').append(unpersonalizedComposer, accentReferences);
     const baseline = document.documentElement.outerHTML;
+    const accentPaint = id => {
+      const style = getComputedStyle(document.getElementById(id));
+      return {background: style.backgroundColor, foreground: style.color, outline: style.outlineColor, opacity: style.opacity, radius: style.borderRadius};
+    };
+    const sameAccentPaint = (id, reference) => JSON.stringify(accentPaint(id)) === JSON.stringify(accentPaint(reference));
+    const nativeAccentClass = document.documentElement.getAttribute('class');
+    const nativeAccentAttribute = document.documentElement.getAttribute('data-fixture-accent');
+    const initialAccentPaint = accentPaint('accent-reference-send');
+    test('native Accent fixture gives thread Home and Dots controls their own semantic colors', ['accent-thread-send', 'accent-home-send'].every(id => sameAccentPaint(id, 'accent-reference-send')) && sameAccentPaint('accent-dots-send', 'accent-dots-reference-send') && initialAccentPaint.background !== accentPaint('accent-dots-send').background);
+    test('native Accent fixture paints the user role itself rather than a colored child', sameAccentPaint('accent-user', 'accent-user-reference') && accentPaint('accent-user').background !== initialAccentPaint.background);
     const dotsHeaderFade = document.getElementById('dots-header-portal-fade');
     const dotsHeaderAction = document.getElementById('dots-header-action');
     const dotsHeaderAnchor = document.getElementById('dots-header-anchor');
@@ -1208,6 +1249,44 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
       const channels = getComputedStyle(node).backgroundColor.match(/[\d.]+/g).map(Number);
       return channels.slice(0, 3).join(',') === '24,24,27' && Math.abs(alpha(node) - requestedAlpha) < 0.005;
     }));
+    const accentMatchesNative = () => ['send', 'stop', 'disabled'].every(state =>
+      ['thread', 'home'].every(context => sameAccentPaint('accent-' + context + '-' + state, 'accent-reference-' + state)) &&
+      sameAccentPaint('accent-dots-' + state, 'accent-dots-reference-' + state) &&
+      sameAccentPaint('accent-unpersonalized-' + state, 'accent-unpersonalized-reference-' + state)) &&
+      sameAccentPaint('accent-user', 'accent-user-reference');
+    const accentLayer = document.querySelector('[data-chatgpt-backdrop-layer]');
+    const accentImage = accentLayer.firstElementChild;
+    const accentURL = accentImage.style.backgroundImage;
+    for (const scheme of ['light', 'dark']) {
+      document.documentElement.className = scheme; await wait();
+      let previousAccent = null;
+      for (const selectedAccent of ['blue', 'rose']) {
+        // This models the native preference updating root tokens while the
+        // background remains applied: deliberately do not call api.apply here.
+        document.documentElement.setAttribute('data-fixture-accent', selectedAccent); await wait();
+        const expected = accentPaint('accent-reference-send');
+        test(scheme + ' ' + selectedAccent + ' Accent updates thread and Home send stop and disabled colors', ['send', 'stop', 'disabled'].every(state => ['thread', 'home'].every(context => sameAccentPaint('accent-' + context + '-' + state, 'accent-reference-' + state))) && (previousAccent === null || expected.background !== previousAccent));
+        test(scheme + ' ' + selectedAccent + ' Accent preserves local Dots and unpersonalized composer palettes', ['send', 'stop', 'disabled'].every(state => sameAccentPaint('accent-dots-' + state, 'accent-dots-reference-' + state) && sameAccentPaint('accent-unpersonalized-' + state, 'accent-unpersonalized-reference-' + state)));
+        test(scheme + ' ' + selectedAccent + ' Accent preserves the native user bubble fill text and radius', sameAccentPaint('accent-user', 'accent-user-reference'));
+        const focusButton = document.getElementById('accent-thread-send');
+        focusButton.focus({preventScroll: true}); await wait();
+        test(scheme + ' ' + selectedAccent + ' native button focus outline follows Accent', document.activeElement === focusButton && getComputedStyle(focusButton).outlineWidth === '2px' && getComputedStyle(focusButton).outlineColor === expected.background);
+        focusButton.blur();
+        previousAccent = expected.background;
+      }
+    }
+    for (const panelOpacity of [0, 1]) {
+      api.apply({imageData: fixtureImage, opacity: 0, panelOpacity}); await wait();
+      test(panelOpacity * 100 + ' percent Panel Opacity preserves native Accent colors and disabled treatment', accentMatchesNative() && Number(getComputedStyle(document.getElementById('accent-thread-disabled')).opacity) === 0.4 && Math.abs(alpha(document.getElementById('thread-composer')) - panelOpacity) < 0.005);
+    }
+    for (const readingMode of ['none', 'sheet', 'cards', 'focus']) {
+      api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: requestedAlpha, readingMode}); await wait();
+      test(readingMode + ' reading mode preserves native Accent controls and user bubble styling', accentMatchesNative());
+    }
+    test('changing native Accent and reading controls retains the wallpaper instance', document.querySelector('[data-chatgpt-backdrop-layer]') === accentLayer && accentLayer.firstElementChild === accentImage && accentImage.style.backgroundImage === accentURL);
+    if (nativeAccentClass === null) document.documentElement.removeAttribute('class'); else document.documentElement.setAttribute('class', nativeAccentClass);
+    if (nativeAccentAttribute === null) document.documentElement.removeAttribute('data-fixture-accent'); else document.documentElement.setAttribute('data-fixture-accent', nativeAccentAttribute);
+    api.apply({imageData: fixtureImage, opacity: 0, panelOpacity: requestedAlpha}); await wait();
     const dotsPlaceholder = document.createComment('Dots fixture route placeholder');
     dotsPage.replaceWith(dotsPlaceholder); await wait();
     test('leaving Dots restores detached roots to their original marker state', !dotsPage.hasAttribute('data-chatgpt-backdrop-surface') && dotsPage.querySelector('#dots-inner-root').getAttribute('data-chatgpt-backdrop-surface') === 'prior-dots' && !dotsPage.querySelector('#dots-inner-pane').hasAttribute('data-chatgpt-backdrop-surface'));
@@ -1424,6 +1503,7 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     test('direct Restore fixture begins with an active reading treatment', api.status().readingMode === 'focus' && visiblePlates().length === 1 && readingViewport.hasAttribute('data-chatgpt-backdrop-reading'));
     api.restore();
     test('direct Restore removes active reading layers and owned scope markers', plates().length === 0 && !readingViewport.hasAttribute('data-chatgpt-backdrop-reading') && readingColumn.getAttribute('data-chatgpt-backdrop-reading') === 'prior-reading');
+    test('Restore preserves native Accent controls bubbles and original preference attributes', accentMatchesNative() && JSON.stringify(accentPaint('accent-thread-send')) === JSON.stringify(initialAccentPaint) && document.documentElement.getAttribute('class') === nativeAccentClass && document.documentElement.getAttribute('data-fixture-accent') === nativeAccentAttribute);
     const restoredHTML = document.documentElement.outerHTML;
     let restoreDifferenceIndex = 0;
     while (restoreDifferenceIndex < Math.min(baseline.length, restoredHTML.length) && baseline[restoreDifferenceIndex] === restoredHTML[restoreDifferenceIndex]) restoreDifferenceIndex++;

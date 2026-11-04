@@ -6,15 +6,19 @@ An original, unofficial Mac utility for image backgrounds in the ChatGPT desktop
 
 Choose a local image, adjust its shade, blur, panel opacity and position, then restore the original appearance whenever you want.
 
-## Version 1.2.2 — Settings backgrounds
+## Version 1.2.3 — Settings backgrounds
 
 The main Settings page now shows the selected wallpaper around its cards. Cards, controls, previews and the action footer keep their native appearance. Embedded settings and protected dialogs retain their original styling; Restore Original restores the page background.
+
+## Version 1.2.2 — native Accent colors
+
+Preserves the native Accent color on send/stop buttons, focus outlines and user-message fills in light and dark mode. Panel Opacity changes only the composer surface; changing Accent while a background is active updates the native controls immediately. Apply with the updated app to replace an earlier styling engine.
 
 ## Version 1.2.1 — Dots header fade
 
 Removes the separate decorative gradient below the Dots toolbar in ChatGPT build 26.1027.61615. The header buttons, profile controls and anchor positioning retain their native appearance and behavior. Restore Original returns the native gradient.
 
-## Upcoming version 1.2.0 — reading modes
+## Version 1.2.0 — reading modes
 
 Build 10 adds optional reading treatments to the existing background controls.
 

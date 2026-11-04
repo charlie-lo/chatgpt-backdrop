@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.2";
+  const VERSION = "1.2.3";
   const GLOBAL = "__chatGPTBackdrop";
   const ROOT_ATTRIBUTE = "data-chatgpt-backdrop";
   const SURFACE_ATTRIBUTE = "data-chatgpt-backdrop-surface";
@@ -608,7 +608,8 @@ ${root} ${dotsFooter} .composer-wrap:not([data-has-composer-surface])${outsidePr
 ${root} [data-app-shell-frame] div[aria-hidden="true"][class*="_PageSurface_"]:empty${outsideProtected} {
   box-shadow: none !important;
 }
-${root} [data-message-author-role]${outsideProtected} {
+/* User messages can carry the native Accent fill on this element itself. */
+${root} [data-message-author-role="assistant"]${outsideProtected} {
   background-color: rgba(${panel},${config.panelOpacity}) !important;
   border-radius: 14px;
 }
@@ -638,10 +639,9 @@ ${root} [${READING_ATTRIBUTE}="${owner}:focus"] [data-message-author-role="assis
   background-color: transparent !important;
 }
 /* Native normal composers paint their root, except on Home where only their
-   body paints. Respect the slider and remove the native elevated shadow. */
+   body paints. Use the local surface token, leaving shared action-color tokens
+   native so send/stop buttons and focus outlines keep following Accent. */
 ${root} ${composer}${outsideProtected} {
-  --color-background-composer-primary: rgba(${panel},${config.panelOpacity}) !important;
-  --color-background-composer-surface: rgba(${panel},${config.panelOpacity}) !important;
   --composer-layout-surface-background: rgba(${panel},${config.panelOpacity}) !important;
   --composer-layout-surface-shadow: none !important;
   --composer-layout-surface-backdrop-filter: none !important;

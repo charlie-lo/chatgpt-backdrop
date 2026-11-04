@@ -14,6 +14,8 @@ node --test .github/scripts/codex-gate.test.cjs # Automatic merge policy
 
 These tests do not connect to, restart, or modify ChatGPT. The mock server uses a temporary local port; the scripts remove their temporary build output and fixtures.
 
+Native Accent regressions use the app's shared composer action-color tokens and class names. The fixture compares native send/stop controls, focus outlines and user-message fills across light/dark appearance and live Accent changes, including Dots-specific action colors, Panel Opacity limits, reading modes and restoration. Backdrop must style the composer surface without replacing those shared action tokens.
+
 ## Multiwindow controller tests
 
 `run-windows.sh` uses in-memory discovery and transport fakes, so it needs no network or GUI access. It covers existing and newly opened chat windows, settings propagation, preserving another window after the original closes, and best-effort cleanup of every window. Unchanged discovery does not evaluate a theme again; a new WebSocket session receives fresh reload-script registration rather than reusing a stale identifier.
@@ -30,7 +32,7 @@ The 1.2.1 Dots header fix passed **272/272** isolated native WebKit checks after
 
 The 1.1.4 Dots fix passed **128/128** isolated native WebKit checks. The same fixture against 1.1.1 failed ten Dots background assertions and passed the other 118 checks. Coverage includes both nested embedded messaging shells and panes, footer paint and decorative fades, initial rendering and SPA navigation, zero/full opacity, light/dark mode, unchanged message bubbles/reactions/attachments, protected layouts, pointer hit testing, focus, scrolling and exact document restoration. Native GIF snapshots showed all three frames before and after control changes. The app builds as 1.1.4 (build 8), its bundled theme matches the tested source and its ad hoc signature verifies.
 
-The upcoming 1.2.0 (build 10) reading-mode changes retain the existing panel, titlebar, bottom-edge, Dots and multiwindow coverage. The settings suite passed **31/31** checks during draft review. Validation of the integrated WebKit fixture is pending macOS CI; a local sandboxed attempt compiled but could not start the WebKit content process, so it produced no behavioral assertion results.
+The 1.2.0 (build 10) reading-mode changes passed **256/256** native WebKit checks in [macOS CI](https://github.com/charlie-lo/chatgpt-backdrop/actions/runs/41764525916), retaining the panel, titlebar, bottom-edge, Dots and multiwindow coverage. The settings suite passed **31/31** checks. A local sandboxed attempt could not start WebKit's content process; the graphical results come from the hosted runner.
 
 The 1.1.1 release passed 99 isolated native WebKit checks, covering the titlebar tint, sidebar resizing, native controls, exact restoration, and GIF playback. Prior validation also passed 12 media checks and 17 CDP transport checks. Native GIF preview was verified using three rendered frame colors, including continuity during SwiftUI control updates. The app UI was checked for GIF selection, theme export/import and the new logo.
 
