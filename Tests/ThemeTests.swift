@@ -1758,6 +1758,159 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     api.restore();
     test('Restore Original directly removes active Dots reading state and restores native assistant material', dotsReadingWasActiveBeforeRestore && dotsPlateNodes().length === 0 && dotsList.getAttribute('data-chatgpt-backdrop-reading') === dotsScopeBefore && alpha(dotsSimple) > 0 && alpha(dotsMaterial, '::before') > 0 && /blur\(8px\)/.test(backdropBlur(dotsMaterial)));
     api.apply(baseReadingConfig); await settleReading();
+    // Measure engine work, not elapsed time: long chats must reuse shared
+    // geometry and avoid restyling unchanged paint while they scroll.
+    const performanceDiagnostic = {cardCount: 100, idle: null, scroll: []};
+    const performanceMain = document.getElementById('main');
+    const performanceMainPlaceholder = document.createComment('performance-main');
+    const performanceDotsPlaceholder = document.createComment('performance-dots');
+    const performanceRootClass = document.documentElement.getAttribute('class');
+    const performanceViewport = document.createElement('main');
+    performanceViewport.id = 'reading-performance'; performanceViewport.className = 'thread-scroll-container';
+    performanceViewport.style.cssText = 'position:fixed;left:160px;top:64px;width:720px;height:520px;overflow:auto;z-index:40;';
+    const performanceColumn = document.createElement('div');
+    performanceColumn.setAttribute('data-thread-user-message-navigation-content', '');
+    performanceColumn.style.cssText = 'box-sizing:border-box;width:640px;margin:0 auto;display:flex;flex-direction:column;gap:24px;padding:20px 0;';
+    const performanceRows = Array.from({length: performanceDiagnostic.cardCount}, (_, index) => {
+      const row = document.createElement('section');
+      row.setAttribute('data-content-search-unit-key', 'performance-' + index);
+      row.style.cssText = 'min-height:72px;flex:none;';
+      row.innerHTML = '<div data-message-author-role="assistant" style="padding:12px">A response in a long conversation.</div>';
+      performanceColumn.append(row); return row;
+    });
+    performanceViewport.append(performanceColumn);
+    const performanceTargets = new Set(performanceRows);
+    const performanceConfig = {...baseReadingConfig, imageData: fixtureGIF, readingMode: 'cards', readingOpacity: 0.62, readingBlur: 7};
+    const nativePerformanceRect = Element.prototype.getBoundingClientRect;
+    const nativePerformanceStyle = window.getComputedStyle;
+    const nativePerformanceSet = CSSStyleDeclaration.prototype.setProperty;
+    const nativePerformanceQuery = Document.prototype.querySelector;
+    const nativePerformanceQueryAll = Document.prototype.querySelectorAll;
+    const nativePerformanceRAF = window.requestAnimationFrame;
+    const performanceDescriptors = [[Element.prototype, 'getBoundingClientRect'], [window, 'getComputedStyle'],
+      [CSSStyleDeclaration.prototype, 'setProperty'], [Document.prototype, 'querySelector'],
+      [Document.prototype, 'querySelectorAll'], [window, 'requestAnimationFrame']]
+      .map(([owner, key]) => ({owner, key, descriptor: Object.getOwnPropertyDescriptor(owner, key)}));
+    let performanceSample = null;
+    const performanceOwnedStyles = new WeakSet();
+    const performancePaintProperties = new Set(['background-color', 'border-radius', 'backdrop-filter', '-webkit-backdrop-filter', 'mask-image', '-webkit-mask-image', 'box-shadow']);
+    const performanceTrackedNode = node => node instanceof Element && (node === performanceViewport || performanceViewport.contains(node));
+    const performanceRead = () => { if (performanceSample?.wroteThisFrame) performanceSample.readsAfterWrite++; };
+    const performanceFrame = () => performanceSample.frameReads[performanceSample.timestamp ?? 'outside-raf'] ??=
+      {rectReads: 0, viewportRects: 0, columnRects: 0, targetRects: 0};
+    const restorePerformanceInstrumentation = () => {
+      for (const {owner, key, descriptor} of performanceDescriptors) {
+        if (descriptor) Object.defineProperty(owner, key, descriptor); else delete owner[key];
+      }
+    };
+    const performanceMetrics = async (scrollTop = null) => {
+      const metric = {rectReads: 0, styleReads: 0, viewportRects: 0, columnRects: 0, targetRects: 0,
+        discoveryQueries: 0, styleWrites: 0, unchangedPaintWrites: 0, readsAfterWrite: 0, frames: 0,
+        frameReads: {}, timestamp: null, wroteThisFrame: false};
+      performanceSample = metric;
+      try {
+        if (scrollTop !== null) {
+          performanceViewport.scrollTop = scrollTop;
+          performanceViewport.dispatchEvent(new Event('scroll'));
+        }
+        await settleReading();
+      } finally { performanceSample = null; }
+      metric.geometryFrames = Object.values(metric.frameReads).filter(frame => frame.targetRects > 0);
+      delete metric.wroteThisFrame; delete metric.timestamp; delete metric.frameReads;
+      return metric;
+    };
+    try {
+      performanceMain.replaceWith(performanceMainPlaceholder); dotsPage.replaceWith(performanceDotsPlaceholder);
+      document.getElementById('root').append(performanceViewport);
+      document.documentElement.className = 'light';
+      api.apply(performanceConfig); await settleReading(); await settleReading();
+      const performanceLayer = document.querySelector('[data-chatgpt-backdrop-layer]');
+      const performanceImage = performanceLayer.firstElementChild; const performanceURL = performanceImage.style.backgroundImage;
+      const performanceCards = allReadingPlates();
+      const performanceInitialTop = performanceRows[2].getBoundingClientRect().top;
+      test('long conversation fixture creates one reading card per response', performanceCards.length === performanceRows.length && api.status().readingMode === 'cards');
+      performanceCards.forEach(node => performanceOwnedStyles.add(node.style));
+      Element.prototype.getBoundingClientRect = function() {
+        if (performanceSample && performanceTrackedNode(this)) {
+          performanceRead(); performanceSample.rectReads++;
+          const frame = performanceFrame(); frame.rectReads++;
+          if (this === performanceViewport) { performanceSample.viewportRects++; frame.viewportRects++; }
+          if (this === performanceColumn) { performanceSample.columnRects++; frame.columnRects++; }
+          if (performanceTargets.has(this)) { performanceSample.targetRects++; frame.targetRects++; }
+        }
+        return nativePerformanceRect.call(this);
+      };
+      window.getComputedStyle = function(node, pseudo) {
+        if (performanceSample && performanceTrackedNode(node)) { performanceRead(); performanceSample.styleReads++; }
+        return nativePerformanceStyle.call(window, node, pseudo);
+      };
+      CSSStyleDeclaration.prototype.setProperty = function(name, value, priority) {
+        if (performanceSample && performanceOwnedStyles.has(this)) {
+          performanceSample.styleWrites++; performanceSample.wroteThisFrame = true;
+          if (performancePaintProperties.has(name)) performanceSample.unchangedPaintWrites++;
+        }
+        return priority === undefined ? nativePerformanceSet.call(this, name, value) : nativePerformanceSet.call(this, name, value, priority);
+      };
+      Document.prototype.querySelector = function(selector) { if (performanceSample) performanceSample.discoveryQueries++; return nativePerformanceQuery.call(this, selector); };
+      Document.prototype.querySelectorAll = function(selector) { if (performanceSample) performanceSample.discoveryQueries++; return nativePerformanceQueryAll.call(this, selector); };
+      window.requestAnimationFrame = function(callback) {
+        return nativePerformanceRAF.call(window, timestamp => {
+          if (performanceSample && performanceSample.timestamp !== timestamp) {
+            performanceSample.frames++; performanceSample.timestamp = timestamp; performanceSample.wroteThisFrame = false;
+          }
+          callback(timestamp);
+        });
+      };
+      try {
+        performanceDiagnostic.idle = await performanceMetrics();
+        for (const offset of [1, 8, 16]) performanceDiagnostic.scroll.push(await performanceMetrics(offset));
+      } finally { restorePerformanceInstrumentation(); }
+      const samples = performanceDiagnostic.scroll;
+      test('a warmed long conversation performs no idle layout scans or owned style writes', performanceDiagnostic.idle.rectReads === 0 && performanceDiagnostic.idle.styleReads === 0 && performanceDiagnostic.idle.discoveryQueries === 0 && performanceDiagnostic.idle.styleWrites === 0);
+      test('scroll geometry bounds shared reads independently of native scroll event timing', samples.every(metric => metric.geometryFrames.length > 0 && metric.geometryFrames.every(frame => frame.viewportRects > 0 && frame.columnRects > 0 && frame.viewportRects <= 2 && frame.columnRects <= 2)));
+      test('long conversation scroll geometry stays within two unique-node passes per frame', samples.every(metric => metric.geometryFrames.length > 0 && metric.geometryFrames.every(frame => frame.rectReads <= 2 * (performanceRows.length + 4) && frame.targetRects <= 2 * performanceRows.length)));
+      test('scrolling does not rediscover the entire application layout', samples.every(metric => metric.discoveryQueries === 0));
+      test('scrolling does not rewrite unchanged reading color blur mask radius or shadow', samples.every(metric => metric.unchangedPaintWrites === 0));
+      test('all native geometry measurements precede owned style writes in each frame', samples.every(metric => metric.readsAfterWrite === 0));
+      const performanceVisible = allReadingPlates().filter(node => getComputedStyle(node).display !== 'none');
+      const performanceBox = performanceViewport.getBoundingClientRect();
+      const performanceClip = {left: performanceBox.left, right: performanceBox.right, top: performanceBox.top, bottom: performanceBox.bottom};
+      const performancePaintedBounds = performanceVisible.map(clippedRect);
+      const performanceNativeBounds = performanceRows.map(node => node.getBoundingClientRect()).filter(rect => intersects(rect, performanceClip));
+      const performanceAligned = performanceNativeBounds.every(rect => performancePaintedBounds.some(plate => inside({left: Math.max(rect.left, performanceClip.left), right: Math.min(rect.right, performanceClip.right), top: Math.max(rect.top, performanceClip.top), bottom: Math.min(rect.bottom, performanceClip.bottom)}, plate)));
+      performanceDiagnostic.nativeScrollDistance = performanceInitialTop - performanceRows[2].getBoundingClientRect().top;
+      test('measured scrolling keeps cards aligned to native movement with clipping opacity and blur', performanceViewport.scrollTop === 16 && Math.abs(performanceDiagnostic.nativeScrollDistance - 16) < 1 && performanceAligned && performanceVisible.length > 0 && performanceVisible.every(node => inside(clippedRect(node), performanceClip) && Math.abs(alpha(node) - 0.62) < 0.005 && /blur\(7px\)/.test(backdropBlur(node))));
+      test('measured scrolling preserves every card and the animated wallpaper identity', allReadingPlates().length === performanceRows.length && performanceCards.every(node => node.isConnected) && document.querySelector('[data-chatgpt-backdrop-layer]') === performanceLayer && performanceLayer.firstElementChild === performanceImage && performanceImage.style.backgroundImage === performanceURL);
+      const performanceTarget = performanceRows[2];
+      const performanceCard = performanceVisible.find(node => intersects(clippedRect(node), performanceTarget.getBoundingClientRect()));
+      const performanceHeight = parseFloat(performanceCard?.style.height || '0');
+      performanceTarget.firstElementChild.firstChild.appendData(' Streamed content changes the native response height.'.repeat(60)); await settleReading();
+      test('measurement caches refresh when streamed content changes native layout', !!performanceCard && performanceCard.isConnected && parseFloat(performanceCard.style.height) > performanceHeight && allReadingPlates().length === performanceRows.length);
+      if (performanceCard) {
+        performanceCard.style.setProperty('background-color', 'rgb(1, 2, 3)', 'important');
+        performanceCard.style.borderRadius = '0px';
+        performanceViewport.dispatchEvent(new Event('scroll')); await settleReading();
+      }
+      test('cached owned paint repairs external inline value and priority edits', !!performanceCard && Math.abs(alpha(performanceCard) - 0.62) < 0.005 && getComputedStyle(performanceCard).borderRadius === '16px' && performanceCard.style.getPropertyPriority('background-color') === '');
+      performanceCard?.remove(); await settleReading();
+      test('externally removed managed reading cards heal without replacing the wallpaper', !!performanceCard && performanceCard.isConnected && allReadingPlates().length === performanceRows.length && performanceLayer.firstElementChild === performanceImage);
+      performanceLayer.remove(); await settleReading();
+      test('externally removed background layers heal with the same decoded image', performanceLayer.isConnected && performanceLayer.firstElementChild === performanceImage && performanceImage.style.backgroundImage === performanceURL && allReadingPlates().length === performanceRows.length);
+      performanceViewport.style.visibility = 'hidden'; await settleReading();
+      const performanceHidden = allReadingPlates().length === 0 && !performanceViewport.hasAttribute('data-chatgpt-backdrop-reading');
+      performanceViewport.style.removeProperty('visibility'); await settleReading();
+      test('visibility changes invalidate long conversation geometry and recover all cards', performanceHidden && allReadingPlates().length === performanceRows.length && performanceViewport.hasAttribute('data-chatgpt-backdrop-reading'));
+      performanceViewport.remove(); await settleReading();
+      test('leaving a long conversation removes its cached reading scopes and plates', allReadingPlates().length === 0 && !performanceViewport.hasAttribute('data-chatgpt-backdrop-reading') && performanceLayer.firstElementChild === performanceImage);
+    } finally {
+      performanceSample = null;
+      restorePerformanceInstrumentation();
+      performanceViewport.remove();
+      performanceMainPlaceholder.replaceWith(performanceMain); performanceDotsPlaceholder.replaceWith(dotsPage);
+      if (performanceRootClass === null) document.documentElement.removeAttribute('class'); else document.documentElement.setAttribute('class', performanceRootClass);
+      api.apply(baseReadingConfig); await settleReading();
+    }
+    test('performance instrumentation restores native DOM APIs and fixture conversations', Element.prototype.getBoundingClientRect === nativePerformanceRect && window.getComputedStyle === nativePerformanceStyle && CSSStyleDeclaration.prototype.setProperty === nativePerformanceSet && Document.prototype.querySelector === nativePerformanceQuery && Document.prototype.querySelectorAll === nativePerformanceQueryAll && window.requestAnimationFrame === nativePerformanceRAF && performanceMain.isConnected && dotsPage.isConnected && !performanceViewport.isConnected);
     const old = document.getElementById('main');
     const replacement = document.createElement('main');
     replacement.id = 'replacement'; replacement.innerHTML = '<p>New SPA route</p>';
@@ -1856,6 +2009,6 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
       document.getElementById('root').style.visibility = 'hidden';
       scrollTo(0, 0); await wait();
     }
-    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, bottomGapDiagnostic, workSurfaceDiagnostic, dotsDiagnostic, dotsHeaderDiagnostic, settingsDiagnostic, readingDiagnostic, dotsReadingDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
+    return {engineVersion: api.version, passed: checks.filter(check => check.pass).length, total: checks.length, settleTimeouts, focusDiagnostic, sidebarDiagnostic, titlebarCapDiagnostic, bottomGapDiagnostic, workSurfaceDiagnostic, dotsDiagnostic, dotsHeaderDiagnostic, settingsDiagnostic, readingDiagnostic, dotsReadingDiagnostic, performanceDiagnostic, restoreDiagnostic, gifDiagnostic, gifSupported, checks};
     """#
 }

@@ -6,6 +6,10 @@ An original, unofficial Mac utility for image backgrounds in the ChatGPT desktop
 
 Choose a local image, adjust its shade, blur, panel opacity and position, then restore the original appearance whenever you want.
 
+## Version 1.2.7 — reading-layer responsiveness
+
+Reuses native measurements within each reading update, batches layout reads before plate writes, and avoids writing unchanged paint styles while scrolling. Reading updates share the existing frame scheduler so the same change does not queue duplicate geometry work. Opacity, blur, GIF playback and native controls retain their selected behavior.
+
 ## Version 1.2.6 — updated ChatGPT styling compatibility
 
 Supports the CSS module names introduced in ChatGPT 26.1029.61003 while retaining the earlier naming format. This restores top-shadow removal, footer fades, composer opacity, the sidebar hairline fix and the Dots header decoration override after the app update. Apply with the updated Backdrop app to replace the previously loaded styling engine.
