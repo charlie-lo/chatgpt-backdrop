@@ -6,6 +6,10 @@ An original, unofficial Mac utility for image backgrounds in the ChatGPT desktop
 
 Choose a local image, adjust its shade, blur, panel opacity and position, then restore the original appearance whenever you want.
 
+## Version 1.2.8 — Cards follow native scrolling
+
+Cards reading backgrounds now live in the same scrolling content layer as their text, keeping them aligned during end-of-scroll overscroll and rebound. Native scrolling and clipping remain in place. Sheet and Focus retain their existing fixed reading treatment, and None / Restore remove the owned card hosts and styling.
+
 ## Version 1.2.7 — reading-layer responsiveness
 
 Reuses native measurements within each reading update, batches layout reads before plate writes, and avoids writing unchanged paint styles while scrolling. Reading updates share the existing frame scheduler so the same change does not queue duplicate geometry work. Opacity, blur, GIF playback and native controls retain their selected behavior.

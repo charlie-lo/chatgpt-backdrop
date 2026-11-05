@@ -2,12 +2,13 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.7";
+  const VERSION = "1.2.8";
   const GLOBAL = "__chatGPTBackdrop";
   const ROOT_ATTRIBUTE = "data-chatgpt-backdrop";
   const SURFACE_ATTRIBUTE = "data-chatgpt-backdrop-surface";
   const MUTED_ATTRIBUTE = "data-chatgpt-backdrop-muted";
   const READING_ATTRIBUTE = "data-chatgpt-backdrop-reading";
+  const CARD_COLUMN_ATTRIBUTE = "data-chatgpt-backdrop-reading-card-column";
   const MAX_DATA_LENGTH = 20 * 1024 * 1024;
   const owner = "cgb-" + Math.random().toString(36).slice(2);
   const previousEngine = globalThis[GLOBAL];
@@ -38,6 +39,7 @@
   const readingPlates = new Map();
   const readingElements = new Set();
   const readingStyleCache = new WeakMap();
+  const readingCardHosts = new Map();
   let readingRegions = [];
   let readingCandidates = [];
   let readingVisibilityCache = new Map();
@@ -217,11 +219,44 @@
     }
     readingPlates.clear();
     readingElements.clear();
+    for (const [column, record] of readingCardHosts) releaseReadingCardHost(column, record);
+    readingCardHosts.clear();
     for (const [node, previous] of readingScopes) restoreReadingScope(node, previous);
     readingScopes.clear();
     readingRegions = [];
     readingCandidates = [];
     readingVisibilityCache.clear();
+  }
+
+  function releaseReadingCardHost(column, record) {
+    readingElements.delete(record.element);
+    record.element.remove();
+    if (column.getAttribute(CARD_COLUMN_ATTRIBUTE) !== owner) return;
+    if (record.previous === null) column.removeAttribute(CARD_COLUMN_ATTRIBUTE);
+    else column.setAttribute(CARD_COLUMN_ATTRIBUTE, record.previous);
+  }
+
+  function readingCardHost(column) {
+    // Both recognized native columns already establish this containing block.
+    // Do not change positioning on an unexpected layout or a boxless wrapper.
+    const box = column.getBoundingClientRect();
+    if (getComputedStyle(column).position === "static" || box.height <= 0) return null;
+    let record = readingCardHosts.get(column);
+    if (!record) {
+      const element = document.createElement("div");
+      element.setAttribute("aria-hidden", "true");
+      element.setAttribute("data-chatgpt-backdrop-reading-card-host", owner);
+      // Clip the visual padding to the column so absolute children cannot
+      // extend the native scroll range. Native ancestors clip the viewport.
+      element.style.cssText = "position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:clip;overflow-anchor:none;";
+      readingElements.add(element);
+      record = {element, previous: column.getAttribute(CARD_COLUMN_ATTRIBUTE)};
+      readingCardHosts.set(column, record);
+    }
+    if (column.getAttribute(CARD_COLUMN_ATTRIBUTE) !== owner) column.setAttribute(CARD_COLUMN_ATTRIBUTE, owner);
+    // Dots uses its last message row for spacing and scroll anchoring.
+    if (record.element.parentElement !== column) column.prepend(record.element);
+    return record.element;
   }
 
   function isReadingStructure(node) {
@@ -325,8 +360,8 @@
     const parent = readingClipBounds(node.parentElement, viewport, visible, cache, measurements);
     const bounds = {...parent};
     const style = measurements.style(node);
-    // Cards live in the owned wallpaper layer, so mirror native intermediate
-    // clipping without changing the response/tool wrappers themselves.
+    // Mirror clipping below the supplied boundary. Local Cards inherit their
+    // native viewport clipping; fixed treatments need the full viewport bounds.
     if (style.display !== "contents") {
       const clipX = /^(hidden|clip|auto|scroll|overlay)$/.test(style.overflowX);
       const clipY = /^(hidden|clip|auto|scroll|overlay)$/.test(style.overflowY);
@@ -416,6 +451,7 @@
     const candidates = [];
     const wantedTargets = new Set();
     const wantedScopes = new Set();
+    const wantedCardColumns = new Set();
     // This native centered wrapper supplies the real chat width. The viewport
     // supplies the vertical extent, including its sticky composer. A single
     // plate avoids stacking a transcript tint with a separate footer tint.
@@ -426,6 +462,8 @@
       if (box.width <= 0 || view.width <= 0 || view.height <= 0) continue;
       const targets = config.readingMode === "cards" ? readingCardTargets(cardCandidates, column) : [column];
       if (!targets.length) continue;
+      const cardHost = config.readingMode === "cards" ? readingCardHost(column) : null;
+      if (cardHost) wantedCardColumns.add(column);
       regions.push({column, viewport, targets});
       wantedScopes.add(scope);
       for (const target of targets) {
@@ -437,11 +475,12 @@
           element.setAttribute("data-chatgpt-backdrop-reading-layer", owner);
           element.style.cssText = "position:absolute;pointer-events:none;overflow:hidden;box-sizing:border-box;";
           readingElements.add(element);
-          layer.append(element);
-          record = {element, target, column, viewport};
+          record = {element, target, column, viewport, cardHost};
           readingPlates.set(target, record);
         }
-        record.column = column; record.viewport = viewport;
+        record.column = column; record.viewport = viewport; record.cardHost = cardHost;
+        const parent = cardHost || layer;
+        if (record.element.parentElement !== parent) parent.append(record.element);
         record.element.setAttribute("data-chatgpt-backdrop-reading-mode", config.readingMode);
         record.element.setAttribute("data-chatgpt-backdrop-reading-kind", config.readingMode === "cards" ? "card" : "column");
         record.element.setAttribute("data-chatgpt-backdrop-reading-context", context);
@@ -453,6 +492,9 @@
         record.element.remove();
         readingPlates.delete(target);
       }
+    }
+    for (const [column, record] of readingCardHosts) {
+      if (!wantedCardColumns.has(column)) { releaseReadingCardHost(column, record); readingCardHosts.delete(column); }
     }
     for (const [scope, previous] of readingScopes) {
       if (!wantedScopes.has(scope)) { restoreReadingScope(scope, previous); readingScopes.delete(scope); }
@@ -485,6 +527,17 @@
         return computedStyles.get(node);
       }
     };
+    const hostMeasurements = new Map();
+    const measureHost = node => {
+      if (!hostMeasurements.has(node)) {
+        const box = measurements.rect(node);
+        const width = node.offsetWidth, height = node.offsetHeight;
+        hostMeasurements.set(node, {left: box.left, top: box.top,
+          scaleX: width > 0 ? box.width / width : 1,
+          scaleY: height > 0 ? box.height / height : 1});
+      }
+      return hostMeasurements.get(node);
+    };
     const panel = mode === "light" ? "255,255,255" : "24,24,27";
     const edge = mode === "light" ? "0,0,0" : "255,255,255";
     const windowWidth = document.documentElement.clientWidth || innerWidth;
@@ -511,16 +564,22 @@
     // Measure every native target before changing any owned plate. Shared
     // columns/viewports and clipping ancestors are read only once per pass.
     for (const record of readingPlates.values()) {
-      const {element, target, column, viewport} = record;
+      const {element, target, column, viewport, cardHost} = record;
       if (muted || !isReadingElement(column, measurements) || !isReadingElement(viewport, measurements) || !isReadingElement(target, measurements)) {
         plans.push({element, properties: [["display", "none"]]});
         refreshNeeded = true; continue;
       }
       const view = measurements.rect(viewport), col = measurements.rect(column);
       const isCard = config.readingMode === "cards";
+      const localCard = isCard && cardHost;
       const isFocus = config.readingMode === "focus";
       const viewBounds = {left: Math.max(0, view.left), right: Math.min(windowWidth, view.right), top: Math.max(0, view.top), bottom: Math.min(windowHeight, view.bottom)};
-      const visible = isCard ? readingClipBounds(target.parentElement, viewport, viewBounds, clipBoundsCache, measurements) : viewBounds;
+      // A card in the scroll-content plane follows compositor overscroll even
+      // when no DOM scroll event fires. Do not freeze a viewport-relative clip
+      // into it: native scroller clipping moves independently of the content.
+      const visible = localCard ? readingClipBounds(target.parentElement, column,
+        {left: -Infinity, right: Infinity, top: -Infinity, bottom: Infinity}, clipBoundsCache, measurements) :
+        isCard ? readingClipBounds(target.parentElement, viewport, viewBounds, clipBoundsCache, measurements) : viewBounds;
       const box = isCard ? measurements.rect(target) : col;
       const spacing = cardSpacing.get(target) || {top: 0, bottom: 0};
       const bounds = isCard ? {left: Math.max(col.left, box.left - 10), right: Math.min(col.right, box.right + 10), top: box.top - spacing.top, bottom: box.bottom + spacing.bottom} :
@@ -539,14 +598,17 @@
       const leftFeather = isFocus ? Math.min(72, Math.max(0, col.left - bounds.left + (parseFloat(columnStyle.paddingLeft) || 0))) : 0;
       const rightFeather = isFocus ? Math.min(72, Math.max(0, bounds.right - col.right + (parseFloat(columnStyle.paddingRight) || 0))) : 0;
       const mask = isFocus ? `linear-gradient(to right,transparent,black ${leftFeather}px,black calc(100% - ${rightFeather}px),transparent)` : "none";
-      plans.push({element, attach: true, properties: [
+      const host = localCard ? measureHost(cardHost) : {left: 0, top: 0, scaleX: 1, scaleY: 1};
+      const {scaleX, scaleY} = host;
+      if (scaleX <= 0 || scaleY <= 0) { plans.push({element, properties: [["display", "none"]]}); continue; }
+      plans.push({element, parent: cardHost || layer, properties: [
         ["display", "block"],
-        ["left", bounds.left + "px"],
-        ["top", bounds.top + "px"],
-        ["width", width + "px"],
-        ["height", height + "px"],
+        ["left", (bounds.left - host.left) / scaleX + "px"],
+        ["top", (bounds.top - host.top) / scaleY + "px"],
+        ["width", width / scaleX + "px"],
+        ["height", height / scaleY + "px"],
         ["border-radius", radius + "px"],
-        ["clip-path", `inset(${cutTop}px ${cutRight}px ${cutBottom}px ${cutLeft}px round ${radius}px)`],
+        ["clip-path", `inset(${cutTop / scaleY}px ${cutRight / scaleX}px ${cutBottom / scaleY}px ${cutLeft / scaleX}px round ${radius}px)`],
         ["background-color", `rgba(${panel},${config.readingOpacity})`],
         ["backdrop-filter", config.readingBlur > 0 ? `blur(${config.readingBlur}px)` : "none"],
         ["-webkit-backdrop-filter", config.readingBlur > 0 ? `blur(${config.readingBlur}px)` : "none"],
@@ -555,9 +617,9 @@
         ["box-shadow", config.readingMode === "focus" ? "none" : `inset 0 0 0 1px rgba(${edge},${config.readingOpacity * 0.14})`]
       ]});
     }
-    for (const {element, properties, attach} of plans) {
+    for (const {element, properties, parent} of plans) {
       for (const [property, value] of properties) readingStyle(element, property, value);
-      if (attach && !element.isConnected) layer.append(element);
+      if (parent && element.parentElement !== parent) parent.append(element);
     }
     if (refreshNeeded) scheduleSync();
   }
@@ -648,6 +710,12 @@
     stylesheet.textContent = `
 ${root} { background-color: ${mode === "light" ? "#f5f5f5" : "#18181b"} !important; }
 ${root} body { background-color: transparent !important; isolation: isolate; }
+/* Cards share the native content's scroll/compositor plane. Isolate only the
+   recognized positioned column so its negative-z backplate stays behind text
+   without changing any native containing block, flow size or control target. */
+${root} [${CARD_COLUMN_ATTRIBUTE}="${owner}"]${outsideProtected} {
+  isolation: isolate !important;
+}
 ${root} [${SURFACE_ATTRIBUTE}="${owner}"] {
   background-color: transparent !important;
   background-image: none !important;
@@ -796,8 +864,8 @@ ${root} ${composer}[data-composer-utility-bar-variant="home"]${outsideProtected}
   box-shadow: none !important;
   backdrop-filter: none !important;
 }
-html[${ROOT_ATTRIBUTE}="${owner}"][${MUTED_ATTRIBUTE}="${owner}"] [data-chatgpt-backdrop-layer="${owner}"] { display: none !important; }
-@media print { [data-chatgpt-backdrop-layer="${owner}"] { display: none !important; } }
+html[${ROOT_ATTRIBUTE}="${owner}"][${MUTED_ATTRIBUTE}="${owner}"] :is([data-chatgpt-backdrop-layer="${owner}"],[data-chatgpt-backdrop-reading-card-host="${owner}"]) { display: none !important; }
+@media print { :is([data-chatgpt-backdrop-layer="${owner}"],[data-chatgpt-backdrop-reading-card-host="${owner}"]) { display: none !important; } }
 `;
   }
 
@@ -856,13 +924,19 @@ html[${ROOT_ATTRIBUTE}="${owner}"][${MUTED_ATTRIBUTE}="${owner}"] [data-chatgpt-
         // Streaming text updates do not change layout ancestry. Re-scan only
         // when elements enter or leave the tree, rather than on every token.
         if (records.some(record => {
-          if (record.target === layer || layer?.contains(record.target)) {
+          if (record.target === layer || layer?.contains(record.target) ||
+              record.target instanceof Element && record.target.getAttribute("data-chatgpt-backdrop-reading-card-host") === owner) {
             // Our own plate changes are already synchronized. A plate still
             // in the registry was removed externally and needs reattaching.
             return [...record.removedNodes].some(node => readingElements.has(node));
           }
+          // Creating or pruning our host is already synchronized. An owned
+          // host still in the registry was removed externally and must heal.
+          const nativeElement = node => node.nodeType === 1 &&
+            node.getAttribute("data-chatgpt-backdrop-reading-card-host") !== owner;
           // Removing the whole layer or stylesheet still reaches this path.
-          return [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1);
+          return [...record.addedNodes].some(nativeElement) ||
+            [...record.removedNodes].some(node => nativeElement(node) || readingElements.has(node));
         })) scheduleSync();
       });
       treeObserver.observe(document.documentElement, {childList: true, subtree: true});

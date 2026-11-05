@@ -196,6 +196,7 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
         #dots-message-list>.message-row{display:flex;align-items:flex-end;margin-bottom:12px;padding-inline:20px}
         #dots-message-list>.message-row.assistant{align-items:flex-start}
         #dots-message-list>.message-row.self{justify-content:flex-end}
+        #dots-message-list>.message-row:last-child{margin-bottom:32px}
         .message-bubble-wrap{max-width:88%;min-width:0;position:relative}
         .message-row.assistant>.message-bubble-wrap{width:100%;max-width:100%}
         .message-surface>.message-bubble{background:rgba(170,178,190,.28);border-radius:22px;padding:12px}
@@ -218,7 +219,7 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
         /* Native conversation and footer columns share the thread width token. */
         #thread-scroll{position:relative;overflow:auto;max-height:560px;width:780px;max-width:100%;margin-inline:auto;--thread-body-max-width:640px}
         [data-thread-user-message-navigation-content],#reading-footer{position:relative;box-sizing:border-box;width:calc(100% - 48px);max-width:var(--thread-body-max-width);margin-inline:auto}
-        #reading-column{display:flex;flex-direction:column;gap:24px;padding-block:20px}
+        #reading-column{position:relative;display:flex;flex-direction:column;gap:24px;padding-block:20px}
         #reading-column [data-content-search-unit-key]{position:relative}
         #reading-tail-spacer{height:280px;flex:none}
         #thread-scroll [aria-hidden=true][class*="_background_fixture"]{position:absolute;pointer-events:none}
@@ -328,7 +329,7 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
             <div id="document-composer" class="_ComposerLayoutRoot_fixture" data-composer-surface-variant="document"><div contenteditable="true">Document editor</div></div>
             <div id="inline-composer" class="_ComposerLayoutRoot_fixture" data-composer-surface-variant="inline"><div contenteditable="true">Inline editor</div></div>
             <div id="thread-scroll" class="thread-scroll-container" data-thread-footer-background style="--thread-footer-background-offset:0px">
-              <div id="reading-column" data-thread-user-message-navigation-content data-chatgpt-backdrop-reading="prior-reading">
+              <div id="reading-column" data-thread-user-message-navigation-content data-chatgpt-backdrop-reading="prior-reading" data-chatgpt-backdrop-reading-card-column="prior-card-column">
                 <section id="reading-assistant" data-content-search-unit-key="assistant-1"><div id="reading-assistant-inner" data-message-author-role="assistant"><p id="reading-text">Readable conversation text stays sharp and selectable.</p><a id="reading-link" href="#reading-link-target" onclick="event.preventDefault();readingLinkClicks++">Open a useful reference</a><div id="reading-nested-tool-unit" data-content-search-unit-key="assistant-1-tool"><div id="reading-native-tool">Native tool card <button id="reading-control" type="button" onclick="readingControlClicks++">View result</button></div></div><pre id="reading-code"><code>const reading = true;</code></pre></div></section>
                 <div id="reading-collapse-wrapper"><section id="reading-tool" data-content-search-unit-key="tool-2"><p>A separate tool result group.</p></section></div>
                 <div id="reading-local-turn" data-turn-key="local-turn"><div class="flex flex-col"><div id="reading-local-group" class="flex flex-col"><p>Local agent activity without a search-unit wrapper.</p></div><div id="reading-local-user-group" class="flex flex-col"><div class="group/user-message">Local user input stays native.</div></div></div></div>
@@ -357,7 +358,7 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
           <section id="bottom-layout" class="bottom-layout-fixture" data-app-shell-frame data-app-shell-page-surface="true" data-app-shell-page-sidebar="true"><div id="bottom-workspace" data-app-shell-workspace-row><aside id="bottom-sidebar" class="app-shell-left-panel" data-app-shell-left-panel-appearance="translucent"><nav id="bottom-navigation"><button id="bottom-control" type="button" onclick="bottomControlClicks++">Bottom control</button></nav></aside><div id="bottom-main" data-app-shell-main-surface="default">Main pane</div></div></section>
           <div id="dots-page" class="messaging-root messaging-embedded"><main id="dots-outer-pane" class="thread-pane">
             <div id="dots-inner-root" class="messaging-root messaging-embedded" data-chatgpt-backdrop-surface="prior-dots"><div id="dots-inner-pane" class="thread-pane flex-1">
-              <div class="conversation-viewport"><div id="dots-scroll" class="messages-scroll" data-role="messages-scroll"><div id="dots-message-list" class="message-list" data-chatgpt-backdrop-reading="prior-dots-reading">
+              <div class="conversation-viewport"><div id="dots-scroll" class="messages-scroll" data-role="messages-scroll"><div id="dots-message-list" class="message-list" data-chatgpt-backdrop-reading="prior-dots-reading" data-chatgpt-backdrop-reading-card-column="prior-dots-card-column">
                 <div class="message-row self"><div id="dots-bubble" class="message-bubble">Native blue message</div></div>
                 <div id="dots-reading-simple-row" class="message-row assistant"><div class="message-bubble-wrap"><div class="message-surface"><div id="dots-reading-simple" class="message-bubble"><div data-markdown-text-style="assistant-message"><p id="dots-reading-text">A normal assistant reply without split-part markers.</p><a id="dots-reading-link" href="#dots-reading-link" onclick="event.preventDefault();window.dotsReadingLinkClicks=(window.dotsReadingLinkClicks||0)+1">Reference</a></div></div></div><button id="dots-reading-reaction" class="dots-reaction" type="button" onclick="window.dotsReadingReactionClicks=(window.dotsReadingReactionClicks||0)+1">React</button></div></div>
                 <div id="dots-reading-rich-row" class="message-row assistant"><div class="message-bubble-wrap"><div class="message-surface"><div class="message-bubble"><div data-orbit-message-parts><div id="dots-reading-material" data-avatar-overlay-material-variant="transcript-message" data-transcript-role="assistant"><div id="dots-reading-part" class="message-bubble" data-orbit-message-text-part data-markdown-text-style="assistant-message">One text part in a response with a rich result.</div></div><div id="dots-reading-attachment" class="dots-attachment" data-orbit-message-block="attachment">Native attachment result</div><button id="dots-reading-choice" class="message-bubble" data-option-picker-choice type="button">Keep this native choice</button><pre id="dots-reading-code"><code>const dotsReading = true;</code></pre></div></div></div></div></div>
@@ -1461,7 +1462,29 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
       const inset = tokens.length === 1 ? [tokens[0], tokens[0], tokens[0], tokens[0]] :
         tokens.length === 2 ? [tokens[0], tokens[1], tokens[0], tokens[1]] :
         tokens.length === 3 ? [tokens[0], tokens[1], tokens[2], tokens[1]] : tokens.length >= 4 ? tokens.slice(0, 4) : [0,0,0,0];
-      return {left: rect.left + inset[3], right: rect.right - inset[1], top: rect.top + inset[0], bottom: rect.bottom - inset[2]};
+      let result = {left: rect.left + inset[3], right: rect.right - inset[1], top: rect.top + inset[0], bottom: rect.bottom - inset[2]};
+      // Owned Cards can live inside the native scrolling plane. Measure the
+      // paint that actually survives both explicit clip-path and native
+      // ancestor overflow, rather than assuming every plate is window-fixed.
+      const intersectClip = (bounds, clip, x = true, y = true) => {
+        const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+        return {left: x ? clamp(bounds.left, clip.left, clip.right) : bounds.left,
+          right: x ? clamp(bounds.right, clip.left, clip.right) : bounds.right,
+          top: y ? clamp(bounds.top, clip.top, clip.bottom) : bounds.top,
+          bottom: y ? clamp(bounds.bottom, clip.top, clip.bottom) : bounds.bottom};
+      };
+      for (let ancestor = node.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        const style = getComputedStyle(ancestor);
+        const clipX = /^(auto|scroll|hidden|clip|overlay)$/.test(style.overflowX);
+        const clipY = /^(auto|scroll|hidden|clip|overlay)$/.test(style.overflowY);
+        if (!clipX && !clipY) continue;
+        const box = ancestor.getBoundingClientRect();
+        const scaleX = ancestor.offsetWidth > 0 ? box.width / ancestor.offsetWidth : 1;
+        const scaleY = ancestor.offsetHeight > 0 ? box.height / ancestor.offsetHeight : 1;
+        const left = box.left + ancestor.clientLeft * scaleX, top = box.top + ancestor.clientTop * scaleY;
+        result = intersectClip(result, {left, top, right: left + ancestor.clientWidth * scaleX, bottom: top + ancestor.clientHeight * scaleY}, clipX, clipY);
+      }
+      return intersectClip(result, {left: 0, top: 0, right: innerWidth, bottom: innerHeight});
     };
     const viewClip = () => {
       const rect = readingViewport.getBoundingClientRect();
@@ -1471,6 +1494,33 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     const intersects = (a, b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
     const backdropBlur = node => getComputedStyle(node).getPropertyValue('backdrop-filter') || getComputedStyle(node).getPropertyValue('-webkit-backdrop-filter');
     const maskImage = node => getComputedStyle(node).getPropertyValue('mask-image') || getComputedStyle(node).getPropertyValue('-webkit-mask-image');
+    const cardsHostSelector = '[data-chatgpt-backdrop-reading-card-host]';
+    const cardColumnAttribute = 'data-chatgpt-backdrop-reading-card-column';
+    const rectShape = node => {
+      const box = node.getBoundingClientRect();
+      return {left: box.left, top: box.top, width: box.width, height: box.height};
+    };
+    const sameRect = (a, b) => Object.keys(a).every(key => Math.abs(a[key] - b[key]) < 0.75);
+    const plateForTarget = (nodes, target) => nodes.find(node => intersects(node.getBoundingClientRect(), target.getBoundingClientRect()));
+    // Apply a compositor-shaped translation and read both boxes synchronously.
+    // There is deliberately no scroll dispatch, await or animation frame for
+    // the engine to copy new coordinates into a fixed wallpaper overlay.
+    const immediateCardMotion = (column, target, plate, offsets) => {
+      if (!plate) return {aligned: false, samples: []};
+      const originalStyle = column.getAttribute('style');
+      const originalText = rectShape(target), originalCard = rectShape(plate);
+      const samples = [];
+      for (const offset of offsets) {
+        column.setAttribute('style', (originalStyle || '') + ';transform:translateY(' + offset + 'px)');
+        const text = rectShape(target), card = rectShape(plate);
+        samples.push({offset, textDelta: text.top - originalText.top, cardDelta: card.top - originalCard.top,
+          aligned: Math.abs((text.top - originalText.top) - (card.top - originalCard.top)) < 0.75 &&
+            Math.abs(text.left - originalText.left - (card.left - originalCard.left)) < 0.75 &&
+            Math.abs(card.height - originalCard.height) < 0.75});
+      }
+      if (originalStyle === null) column.removeAttribute('style'); else column.setAttribute('style', originalStyle);
+      return {aligned: samples.every(sample => sample.aligned), samples};
+    };
     api.apply(baseReadingConfig); await settleReading();
     test('older theme payloads default to None readability', api.status().readingMode === 'none' && api.status().readingSurfaceCount === 0 && plates().length === 0);
     test('None preserves a pre-existing unrelated column marker', readingColumn.getAttribute('data-chatgpt-backdrop-reading') === 'prior-reading');
@@ -1504,6 +1554,7 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
       test(readingMode + ' does not rewrite native layout or unrelated markers', getComputedStyle(readingColumn).position === originalColumnPosition && readingColumn.getAttribute('data-chatgpt-backdrop-reading') === 'prior-reading');
       test(readingMode + ' avoids a second tint on assistant wrappers', alpha(document.getElementById('reading-assistant-inner')) === 0);
       if (readingMode === 'sheet') {
+        test('Sheet keeps its fixed wallpaper plane without a scrolling Cards host', visible.every(node => layer.contains(node)) && !readingColumn.querySelector(cardsHostSelector));
         const rect = visible[0]?.getBoundingClientRect(); const col = readingColumn.getBoundingClientRect();
         test('Sheet follows the native bounded chat column width', !!rect && Math.abs(rect.left - col.left) < 1 && Math.abs(rect.width - col.width) < 1);
         test('Sheet is one continuous rounded plate including the composer area', visible.length === 1 && parseFloat(getComputedStyle(visible[0]).borderRadius) >= 12 && clippedRect(visible[0]).bottom >= Math.min(readingFooter.getBoundingClientRect().bottom, viewClip().bottom) - 1);
@@ -1515,6 +1566,7 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
         test('Cards do not paint user input groups', cardRects.every(rect => !intersects(rect, document.getElementById('reading-user').getBoundingClientRect()) && !intersects(rect, document.getElementById('reading-local-user-group').getBoundingClientRect())));
         test('Cards retain separate rounded backgrounds without a global column plate', visible.every(node => node.getAttribute('data-chatgpt-backdrop-reading-kind') === 'card' && parseFloat(getComputedStyle(node).borderRadius) >= 12 && maskImage(node) === 'none'));
       } else {
+        test('Focus keeps its fixed wallpaper plane without a scrolling Cards host', visible.every(node => layer.contains(node)) && !readingColumn.querySelector(cardsHostSelector));
         const rect = visible[0]?.getBoundingClientRect(); const col = readingColumn.getBoundingClientRect();
         test('Focus uses a feathered mask with no hard card boundary', visible.length === 1 && /linear-gradient\(/.test(maskImage(visible[0])) && getComputedStyle(visible[0]).borderRadius === '0px' && getComputedStyle(visible[0]).boxShadow === 'none');
         test('Focus reaches into the gutter while staying within the main pane', !!rect && rect.width >= col.width && rect.width <= readingViewport.getBoundingClientRect().width + 1);
@@ -1573,7 +1625,40 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     readingViewport.style.width = '620px'; await settleReading();
     const resizedSheet = visiblePlates()[0]?.getBoundingClientRect(); const resizedColumn = readingColumn.getBoundingClientRect();
     test('Sheet tracks native column resizing', !!resizedSheet && Math.abs(resizedSheet.width - resizedColumn.width) < 1 && Math.abs(resizedSheet.left - resizedColumn.left) < 1);
+    const cardNativeColumnStyle = readingColumn.getAttribute('style');
+    const cardNativeIsolation = getComputedStyle(readingColumn).isolation;
+    const cardNativeLayout = {box: rectShape(readingColumn), scrollHeight: readingViewport.scrollHeight,
+      columnScrollHeight: readingColumn.scrollHeight, last: readingColumn.lastElementChild,
+      position: getComputedStyle(readingColumn).position, gap: getComputedStyle(readingColumn).rowGap};
+    const cardNativeControl = document.getElementById('reading-control');
+    const cardNativeControlBox = rectShape(cardNativeControl);
+    const cardNativeControlHit = document.elementFromPoint(cardNativeControlBox.left + cardNativeControlBox.width / 2, cardNativeControlBox.top + cardNativeControlBox.height / 2);
     api.apply({...baseReadingConfig, readingMode: 'cards', readingOpacity: 0.64, readingBlur: 9}); await settleReading();
+    const nativeCardsHost = readingColumn.querySelector(cardsHostSelector);
+    test('Cards share the native positioned conversation content plane', !!nativeCardsHost && nativeCardsHost.parentElement === readingColumn && plates().every(node => node.parentElement === nativeCardsHost && !layer.contains(node)));
+    test('Cards host does not change native conversation flow or positioning', sameRect(rectShape(readingColumn), cardNativeLayout.box) && readingViewport.scrollHeight === cardNativeLayout.scrollHeight && readingColumn.scrollHeight === cardNativeLayout.columnScrollHeight && readingColumn.lastElementChild === cardNativeLayout.last && getComputedStyle(readingColumn).position === cardNativeLayout.position && getComputedStyle(readingColumn).rowGap === cardNativeLayout.gap && readingColumn.getAttribute('style') === cardNativeColumnStyle);
+    test('Cards scrolling host remains noninteractive and hidden from accessibility', !!nativeCardsHost && getComputedStyle(nativeCardsHost).position === 'absolute' && getComputedStyle(nativeCardsHost).pointerEvents === 'none' && nativeCardsHost.getAttribute('aria-hidden') === 'true');
+    test('Cards keep native result control geometry and hit area unchanged', sameRect(rectShape(cardNativeControl), cardNativeControlBox) && document.elementFromPoint(cardNativeControlBox.left + cardNativeControlBox.width / 2, cardNativeControlBox.top + cardNativeControlBox.height / 2) === cardNativeControlHit);
+    const cardBounceTarget = document.getElementById('reading-virtual-group');
+    const cardBouncePlate = plateForTarget(plates(), cardBounceTarget);
+    readingViewport.scrollTop = readingViewport.scrollHeight; await settleReading();
+    const regularBottomBounce = immediateCardMotion(readingColumn, cardBounceTarget, cardBouncePlate, [-38, -12, 0, -7, 0]);
+    test('Cards move with text synchronously during bottom pull and rebound', readingViewport.scrollTop > 0 && regularBottomBounce.aligned);
+    test('Cards remain mounted in native scrolling content when bounce can reveal them', !!cardBouncePlate && cardBouncePlate.isConnected && getComputedStyle(cardBouncePlate).display !== 'none' && readingColumn.contains(cardBouncePlate));
+    readingViewport.scrollTop = 0; await settleReading();
+    const regularTopBounce = immediateCardMotion(readingColumn, document.getElementById('reading-assistant'), plateForTarget(plates(), document.getElementById('reading-assistant')), [32, 11, 0]);
+    test('Cards move with text synchronously during top pull and return', regularTopBounce.aligned);
+    test('Cards retain native viewport clipping after a translated content gesture', plates().every(node => inside(clippedRect(node), viewClip())));
+    const nativeWheel = new WheelEvent('wheel', {deltaY: 45, bubbles: true, cancelable: true});
+    readingViewport.dispatchEvent(nativeWheel);
+    test('Cards do not cancel the native scrolling gesture', !nativeWheel.defaultPrevented);
+    readingColumn.setAttribute('style', (cardNativeColumnStyle || '') + ';position:static'); await settleReading();
+    test('an unexpected static column keeps native positioning and uses the fixed fallback', getComputedStyle(readingColumn).position === 'static' && !readingColumn.querySelector(cardsHostSelector) && readingColumn.getAttribute(cardColumnAttribute) === 'prior-card-column' && plates().every(node => layer.contains(node)));
+    // This inline attribute belongs only to the fixture's transform/position
+    // exercises. Restore its pre-exercise presence exactly, including absence;
+    // do not retain a serialized empty attribute from a live style object.
+    if (cardNativeColumnStyle === null) readingColumn.removeAttribute('style'); else readingColumn.setAttribute('style', cardNativeColumnStyle); await settleReading();
+    test('restoring a native positioned column reattaches one scrolling Cards host', readingColumn.querySelectorAll(cardsHostSelector).length === 1 && plates().every(node => readingColumn.contains(node)));
     readingViewport.scrollTop = 90; await settleReading();
     test('Cards stay clipped while the native transcript scrolls', readingViewport.scrollTop > 0 && visiblePlates().length > 0 && visiblePlates().every(node => inside(clippedRect(node), viewClip())));
     readingViewport.scrollTop = 0; await settleReading();
@@ -1610,6 +1695,7 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
       for (const readingMode of ['sheet', 'cards', 'focus', 'none']) { api.apply({...baseReadingConfig, readingMode}); await settleReading(); }
     }
     test('repeated mode switching leaves no reading layers in None', api.status().readingMode === 'none' && api.status().readingSurfaceCount === 0 && plates().length === 0);
+    test('None removes scrolling Cards hosts and restores the prior column marker and isolation', !document.querySelector(cardsHostSelector) && readingColumn.getAttribute(cardColumnAttribute) === 'prior-card-column' && getComputedStyle(readingColumn).isolation === cardNativeIsolation && readingColumn.getAttribute('style') === cardNativeColumnStyle);
     test('None removes the native reading-scope marker', !readingViewport.hasAttribute('data-chatgpt-backdrop-reading') && readingColumn.getAttribute('data-chatgpt-backdrop-reading') === 'prior-reading');
     api.apply({...baseReadingConfig, readingMode: 'not-a-mode'}); await settleReading();
     test('unknown reading modes safely fall back to None', api.status().readingMode === 'none' && plates().length === 0);
@@ -1720,6 +1806,50 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     test('Dots Cards follow native scrolling and clip at the intermediate messages viewport', dotsScroll.scrollTop > 0 && visibleDotsPlates().length > 0 && visibleDotsPlates().every(node => inside(clippedRect(node), scrollClip)));
     incomingDots.remove(); dotsScroll.scrollTop = 0; await settleReading();
     test('Dots Cards remove the detached streamed response treatment', dotsPlateNodes().length === 2);
+    // Match the native list's last-row rule and bottom anchor lookup. The
+    // original fixture has trailing controls/spacers; park those temporarily
+    // as comments so an owned host must not become the last element child.
+    api.apply({...dotsReadingConfig, readingMode: 'none'}); await settleReading();
+    const dotsCardsColumnStyle = dotsList.getAttribute('style');
+    const dotsNativeIsolation = getComputedStyle(dotsList).isolation;
+    const dotsTrailing = [], dotsNativeRows = [...dotsList.children];
+    const lastMessageIndex = dotsNativeRows.map(node => node.matches('.message-row')).lastIndexOf(true);
+    for (const node of dotsNativeRows.slice(lastMessageIndex + 1)) {
+      const placeholder = document.createComment('native Dots trailing fixture');
+      node.replaceWith(placeholder); dotsTrailing.push({node, placeholder});
+    }
+    dotsList.style.minHeight = '900px'; await settleReading();
+    const dotsNativeBottomRow = dotsList.lastElementChild;
+    const dotsNativeBottomMargin = getComputedStyle(dotsNativeBottomRow).marginBottom;
+    const dotsCardsNativeFlow = {box: rectShape(dotsList), scrollHeight: dotsScroll.scrollHeight,
+      position: getComputedStyle(dotsList).position, style: dotsList.getAttribute('style'), control: rectShape(reaction)};
+    const dotsNativeControlHit = document.elementFromPoint(dotsCardsNativeFlow.control.left + dotsCardsNativeFlow.control.width / 2, dotsCardsNativeFlow.control.top + dotsCardsNativeFlow.control.height / 2);
+    test('Dots overscroll fixture reproduces the native final row spacing and scroll range', dotsNativeBottomRow.matches('.message-row') && dotsNativeBottomMargin === '32px' && dotsScroll.scrollHeight > dotsScroll.clientHeight);
+    api.apply({...dotsReadingConfig, readingMode: 'cards', readingOpacity: 0.61, readingBlur: 3}); await settleReading();
+    const dotsCardsHost = dotsList.querySelector(cardsHostSelector);
+    test('Dots Cards share the native scrolling message-list plane', !!dotsCardsHost && dotsCardsHost.parentElement === dotsList && dotsPlateNodes().every(node => node.parentElement === dotsCardsHost && !layer.contains(node)));
+    test('Dots Cards preserve the native last-message anchor and last-child margin', dotsList.lastElementChild === dotsNativeBottomRow && getComputedStyle(dotsNativeBottomRow).marginBottom === dotsNativeBottomMargin && dotsNativeBottomMargin === '32px');
+    test('Dots Cards do not change native flow positioning inline styles or control hit area', sameRect(rectShape(dotsList), dotsCardsNativeFlow.box) && dotsScroll.scrollHeight === dotsCardsNativeFlow.scrollHeight && getComputedStyle(dotsList).position === dotsCardsNativeFlow.position && dotsList.getAttribute('style') === dotsCardsNativeFlow.style && sameRect(rectShape(reaction), dotsCardsNativeFlow.control) && document.elementFromPoint(dotsCardsNativeFlow.control.left + dotsCardsNativeFlow.control.width / 2, dotsCardsNativeFlow.control.top + dotsCardsNativeFlow.control.height / 2) === dotsNativeControlHit);
+    const dotsBounceTarget = document.getElementById('dots-reading-rich-row');
+    const dotsBouncePlate = plateForTarget(dotsPlateNodes(), dotsBounceTarget);
+    dotsScroll.scrollTop = dotsScroll.scrollHeight; await settleReading();
+    const dotsBottomBounce = immediateCardMotion(dotsList, dotsBounceTarget, dotsBouncePlate, [-42, -16, 0, -6, 0]);
+    test('Dots Cards move with text synchronously at the bottom during pull and rebound', dotsScroll.scrollTop > 0 && dotsBottomBounce.aligned);
+    test('Dots Cards stay available inside native scroll content while offscreen', !!dotsBouncePlate && dotsBouncePlate.isConnected && dotsList.contains(dotsBouncePlate) && getComputedStyle(dotsBouncePlate).display !== 'none');
+    dotsScroll.scrollTop = 0; await settleReading();
+    const dotsTopBounce = immediateCardMotion(dotsList, dotsSimpleRow, plateForTarget(dotsPlateNodes(), dotsSimpleRow), [34, 13, 0]);
+    test('Dots Cards move with text synchronously during top overscroll and return', dotsTopBounce.aligned);
+    const dotsClippingBox = dotsScroll.getBoundingClientRect();
+    test('Dots Cards retain native scrolling clipping after bounce returns', dotsPlateNodes().every(node => inside(clippedRect(node), {left: dotsClippingBox.left, right: dotsClippingBox.right, top: dotsClippingBox.top, bottom: dotsClippingBox.bottom})));
+    for (const mode of ['sheet', 'focus']) {
+      api.apply({...dotsReadingConfig, readingMode: mode, readingOpacity: 0.61, readingBlur: 3}); await settleReading();
+      test('Dots ' + mode + ' removes the scrolling Cards host and restores column isolation', !dotsList.querySelector(cardsHostSelector) && dotsList.getAttribute(cardColumnAttribute) === 'prior-dots-card-column' && getComputedStyle(dotsList).isolation === dotsNativeIsolation && dotsPlateNodes().every(node => layer.contains(node)));
+    }
+    api.apply({...dotsReadingConfig, readingMode: 'none'}); await settleReading();
+    test('Dots None restores the original card-column marker without inline style mutations', dotsList.getAttribute(cardColumnAttribute) === 'prior-dots-card-column' && getComputedStyle(dotsList).isolation === dotsNativeIsolation && dotsList.getAttribute('style') === dotsCardsNativeFlow.style && !dotsList.querySelector(cardsHostSelector));
+    for (const {node, placeholder} of dotsTrailing) placeholder.replaceWith(node);
+    if (dotsCardsColumnStyle === null) dotsList.removeAttribute('style'); else dotsList.setAttribute('style', dotsCardsColumnStyle);
+    api.apply({...dotsReadingConfig, readingMode: 'cards', readingOpacity: 0.61, readingBlur: 3}); await settleReading();
     const simpleRowStyle = dotsSimpleRow.getAttribute('style'); dotsSimpleRow.style.display = 'none'; await settleReading();
     test('hiding a native Dots assistant response removes its card without reapplying settings', dotsPlateNodes().length === 1);
     if (simpleRowStyle === null) dotsSimpleRow.removeAttribute('style'); else dotsSimpleRow.setAttribute('style', simpleRowStyle); await settleReading();
@@ -1770,7 +1900,7 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
     performanceViewport.style.cssText = 'position:fixed;left:160px;top:64px;width:720px;height:520px;overflow:auto;z-index:40;';
     const performanceColumn = document.createElement('div');
     performanceColumn.setAttribute('data-thread-user-message-navigation-content', '');
-    performanceColumn.style.cssText = 'box-sizing:border-box;width:640px;margin:0 auto;display:flex;flex-direction:column;gap:24px;padding:20px 0;';
+    performanceColumn.style.cssText = 'position:relative;box-sizing:border-box;width:640px;margin:0 auto;display:flex;flex-direction:column;gap:24px;padding:20px 0;';
     const performanceRows = Array.from({length: performanceDiagnostic.cardCount}, (_, index) => {
       const row = document.createElement('section');
       row.setAttribute('data-content-search-unit-key', 'performance-' + index);
@@ -1828,8 +1958,10 @@ final class Runner: NSObject, WKNavigationDelegate, NSWindowDelegate, WKScriptMe
       const performanceImage = performanceLayer.firstElementChild; const performanceURL = performanceImage.style.backgroundImage;
       const performanceCards = allReadingPlates();
       const performanceInitialTop = performanceRows[2].getBoundingClientRect().top;
-      test('long conversation fixture creates one reading card per response', performanceCards.length === performanceRows.length && api.status().readingMode === 'cards');
+      const performanceHost = performanceColumn.querySelector(cardsHostSelector);
+      test('long conversation fixture creates one reading card per response in the native scrolling plane', performanceCards.length === performanceRows.length && api.status().readingMode === 'cards' && !!performanceHost && performanceHost.parentElement === performanceColumn && performanceCards.every(node => node.parentElement === performanceHost));
       performanceCards.forEach(node => performanceOwnedStyles.add(node.style));
+      performanceColumn.querySelectorAll(cardsHostSelector).forEach(node => performanceOwnedStyles.add(node.style));
       Element.prototype.getBoundingClientRect = function() {
         if (performanceSample && performanceTrackedNode(this)) {
           performanceRead(); performanceSample.rectReads++;
