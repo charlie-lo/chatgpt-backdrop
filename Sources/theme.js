@@ -2,7 +2,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.2.6";
+  const VERSION = "1.2.7";
   const GLOBAL = "__chatGPTBackdrop";
   const ROOT_ATTRIBUTE = "data-chatgpt-backdrop";
   const SURFACE_ATTRIBUTE = "data-chatgpt-backdrop-surface";
@@ -36,6 +36,8 @@
   const marked = new Map();
   const readingScopes = new Map();
   const readingPlates = new Map();
+  const readingElements = new Set();
+  const readingStyleCache = new WeakMap();
   let readingRegions = [];
   let readingCandidates = [];
   let readingVisibilityCache = new Map();
@@ -209,8 +211,12 @@
       removeEventListener("scroll", onReadingScroll, true);
       readingEventsAttached = false;
     }
-    for (const record of readingPlates.values()) record.element.remove();
+    for (const record of readingPlates.values()) {
+      readingElements.delete(record.element);
+      record.element.remove();
+    }
     readingPlates.clear();
+    readingElements.clear();
     for (const [node, previous] of readingScopes) restoreReadingScope(node, previous);
     readingScopes.clear();
     readingRegions = [];
@@ -223,18 +229,18 @@
       !node.closest(protectedSurface + ',aside,.app-shell-left-panel');
   }
 
-  function isPaintedReadingAncestor(node) {
+  function isPaintedReadingAncestor(node, measurements) {
     if (!(node instanceof Element)) return true;
     if (readingVisibilityCache.has(node)) return readingVisibilityCache.get(node);
-    const style = getComputedStyle(node);
+    const style = measurements ? measurements.style(node) : getComputedStyle(node);
     const painted = style.display !== "none" && style.visibility !== "hidden" && style.visibility !== "collapse" &&
-      Number(style.opacity) !== 0 && isPaintedReadingAncestor(node.parentElement);
+      Number(style.opacity) !== 0 && isPaintedReadingAncestor(node.parentElement, measurements);
     readingVisibilityCache.set(node, painted);
     return painted;
   }
 
-  function isReadingElement(node) {
-    return isReadingStructure(node) && !node.closest('[hidden],[inert],[aria-hidden="true"]') && isPaintedReadingAncestor(node);
+  function isReadingElement(node, measurements) {
+    return isReadingStructure(node) && !node.closest('[hidden],[inert],[aria-hidden="true"]') && isPaintedReadingAncestor(node, measurements);
   }
 
   function isUserUnit(node) {
@@ -313,19 +319,19 @@
     return regions;
   }
 
-  function readingClipBounds(node, viewport, visible, cache) {
+  function readingClipBounds(node, viewport, visible, cache, measurements) {
     if (!node || node === viewport) return visible;
     if (cache.has(node)) return cache.get(node);
-    const parent = readingClipBounds(node.parentElement, viewport, visible, cache);
+    const parent = readingClipBounds(node.parentElement, viewport, visible, cache, measurements);
     const bounds = {...parent};
-    const style = getComputedStyle(node);
+    const style = measurements.style(node);
     // Cards live in the owned wallpaper layer, so mirror native intermediate
     // clipping without changing the response/tool wrappers themselves.
     if (style.display !== "contents") {
       const clipX = /^(hidden|clip|auto|scroll|overlay)$/.test(style.overflowX);
       const clipY = /^(hidden|clip|auto|scroll|overlay)$/.test(style.overflowY);
       if (clipX || clipY) {
-        const box = node.getBoundingClientRect();
+        const box = measurements.rect(node);
         const scaleX = node.offsetWidth > 0 ? box.width / node.offsetWidth : 1;
         const scaleY = node.offsetHeight > 0 ? box.height / node.offsetHeight : 1;
         const left = box.left + node.clientLeft * scaleX;
@@ -339,11 +345,22 @@
   }
 
   function readingStyle(element, property, value) {
-    if (element.style.getPropertyValue(property) !== value) element.style.setProperty(property, value);
+    let cache = readingStyleCache.get(element);
+    if (!cache) { cache = new Map(); readingStyleCache.set(element, cache); }
+    const previous = cache.get(property);
+    const current = element.style.getPropertyValue(property);
+    const priority = element.style.getPropertyPriority(property);
+    // Browsers normalize rgba, clip-path and shadow serialization. Remember
+    // the normalized result, but still repair an externally edited property.
+    if (previous && previous.requested === value && previous.normalized === current && previous.priority === priority) return;
+    if (current !== value || priority) element.style.setProperty(property, value);
+    cache.set(property, {requested: value, normalized: element.style.getPropertyValue(property),
+      priority: element.style.getPropertyPriority(property)});
   }
 
   function scheduleReadingGeometry() {
-    if (!active || !config || config.readingMode === "none" || readingGeometryFrame) return;
+    // A pending full synchronization already includes the geometry pass.
+    if (!active || !config || config.readingMode === "none" || frame || readingGeometryFrame) return;
     readingGeometryFrame = requestAnimationFrame(() => {
       readingGeometryFrame = 0;
       syncReadingGeometry();
@@ -419,6 +436,7 @@
           element.setAttribute("aria-hidden", "true");
           element.setAttribute("data-chatgpt-backdrop-reading-layer", owner);
           element.style.cssText = "position:absolute;pointer-events:none;overflow:hidden;box-sizing:border-box;";
+          readingElements.add(element);
           layer.append(element);
           record = {element, target, column, viewport};
           readingPlates.set(target, record);
@@ -430,7 +448,11 @@
       }
     }
     for (const [target, record] of readingPlates) {
-      if (!wantedTargets.has(target)) { record.element.remove(); readingPlates.delete(target); }
+      if (!wantedTargets.has(target)) {
+        readingElements.delete(record.element);
+        record.element.remove();
+        readingPlates.delete(target);
+      }
     }
     for (const [scope, previous] of readingScopes) {
       if (!wantedScopes.has(scope)) { restoreReadingScope(scope, previous); readingScopes.delete(scope); }
@@ -449,16 +471,30 @@
 
   function syncReadingGeometry() {
     if (!active || !config || config.readingMode === "none") return;
+    if (readingGeometryFrame) cancelAnimationFrame(readingGeometryFrame);
+    readingGeometryFrame = 0;
     readingVisibilityCache = new Map();
+    const rectangles = new Map(), computedStyles = new Map();
+    const measurements = {
+      rect(node) {
+        if (!rectangles.has(node)) rectangles.set(node, node.getBoundingClientRect());
+        return rectangles.get(node);
+      },
+      style(node) {
+        if (!computedStyles.has(node)) computedStyles.set(node, getComputedStyle(node));
+        return computedStyles.get(node);
+      }
+    };
     const panel = mode === "light" ? "255,255,255" : "24,24,27";
     const edge = mode === "light" ? "0,0,0" : "255,255,255";
     const windowWidth = document.documentElement.clientWidth || innerWidth;
     const windowHeight = document.documentElement.clientHeight || innerHeight;
+    const muted = isMutedRoute();
     const clipBoundsCache = new Map();
     const cardSpacing = new Map();
     if (config.readingMode === "cards") {
       for (const region of readingRegions) {
-        const rows = region.targets.map(target => ({target, box: target.getBoundingClientRect()})).sort((a, b) => a.box.top - b.box.top);
+        const rows = region.targets.map(target => ({target, box: measurements.rect(target)})).sort((a, b) => a.box.top - b.box.top);
         rows.forEach((row, index) => {
           const previous = rows[index - 1], next = rows[index + 1];
           // Visual padding must not overlap the neighboring reading card and
@@ -471,17 +507,21 @@
       }
     }
     let refreshNeeded = false;
+    const plans = [];
+    // Measure every native target before changing any owned plate. Shared
+    // columns/viewports and clipping ancestors are read only once per pass.
     for (const record of readingPlates.values()) {
       const {element, target, column, viewport} = record;
-      if (!isReadingElement(column) || !isReadingElement(viewport) || !isReadingElement(target) || isMutedRoute()) {
-        readingStyle(element, "display", "none"); refreshNeeded = true; continue;
+      if (muted || !isReadingElement(column, measurements) || !isReadingElement(viewport, measurements) || !isReadingElement(target, measurements)) {
+        plans.push({element, properties: [["display", "none"]]});
+        refreshNeeded = true; continue;
       }
-      const view = viewport.getBoundingClientRect(), col = column.getBoundingClientRect();
+      const view = measurements.rect(viewport), col = measurements.rect(column);
       const isCard = config.readingMode === "cards";
       const isFocus = config.readingMode === "focus";
       const viewBounds = {left: Math.max(0, view.left), right: Math.min(windowWidth, view.right), top: Math.max(0, view.top), bottom: Math.min(windowHeight, view.bottom)};
-      const visible = isCard ? readingClipBounds(target.parentElement, viewport, viewBounds, clipBoundsCache) : viewBounds;
-      const box = isCard ? target.getBoundingClientRect() : col;
+      const visible = isCard ? readingClipBounds(target.parentElement, viewport, viewBounds, clipBoundsCache, measurements) : viewBounds;
+      const box = isCard ? measurements.rect(target) : col;
       const spacing = cardSpacing.get(target) || {top: 0, bottom: 0};
       const bounds = isCard ? {left: Math.max(col.left, box.left - 10), right: Math.min(col.right, box.right + 10), top: box.top - spacing.top, bottom: box.bottom + spacing.bottom} :
         {left: Math.max(col.left - (isFocus ? 48 : 0), visible.left), right: Math.min(col.right + (isFocus ? 48 : 0), visible.right), top: visible.top, bottom: visible.bottom};
@@ -490,35 +530,42 @@
       const width = bounds.right - bounds.left, height = bounds.bottom - bounds.top;
       if (box.width <= 0 || (isCard && box.height <= 0) || height <= 0 || width <= 0 || visible.right <= visible.left || visible.bottom <= visible.top || bounds.right <= visible.left || bounds.left >= visible.right || bounds.bottom <= visible.top || bounds.top >= visible.bottom) {
         if (box.width <= 0 || col.width <= 0 || view.width <= 0 || view.height <= 0) refreshNeeded = true;
-        readingStyle(element, "display", "none"); continue;
+        plans.push({element, properties: [["display", "none"]]}); continue;
       }
       const radius = config.readingMode === "focus" ? 0 : isCard ? 16 : 18;
-      const columnStyle = isFocus ? getComputedStyle(column) : null;
+      const columnStyle = isFocus ? measurements.style(column) : null;
       // Spend the available gutter and native column padding on the fade, so
       // the first and last text characters still sit on the full-strength tint.
       const leftFeather = isFocus ? Math.min(72, Math.max(0, col.left - bounds.left + (parseFloat(columnStyle.paddingLeft) || 0))) : 0;
       const rightFeather = isFocus ? Math.min(72, Math.max(0, bounds.right - col.right + (parseFloat(columnStyle.paddingRight) || 0))) : 0;
       const mask = isFocus ? `linear-gradient(to right,transparent,black ${leftFeather}px,black calc(100% - ${rightFeather}px),transparent)` : "none";
-      readingStyle(element, "display", "block");
-      readingStyle(element, "left", bounds.left + "px");
-      readingStyle(element, "top", bounds.top + "px");
-      readingStyle(element, "width", width + "px");
-      readingStyle(element, "height", height + "px");
-      readingStyle(element, "border-radius", radius + "px");
-      readingStyle(element, "clip-path", `inset(${cutTop}px ${cutRight}px ${cutBottom}px ${cutLeft}px round ${radius}px)`);
-      readingStyle(element, "background-color", `rgba(${panel},${config.readingOpacity})`);
-      readingStyle(element, "backdrop-filter", config.readingBlur > 0 ? `blur(${config.readingBlur}px)` : "none");
-      readingStyle(element, "-webkit-backdrop-filter", config.readingBlur > 0 ? `blur(${config.readingBlur}px)` : "none");
-      readingStyle(element, "mask-image", mask);
-      readingStyle(element, "-webkit-mask-image", mask);
-      readingStyle(element, "box-shadow", config.readingMode === "focus" ? "none" : `inset 0 0 0 1px rgba(${edge},${config.readingOpacity * 0.14})`);
-      if (!element.isConnected) layer.append(element);
+      plans.push({element, attach: true, properties: [
+        ["display", "block"],
+        ["left", bounds.left + "px"],
+        ["top", bounds.top + "px"],
+        ["width", width + "px"],
+        ["height", height + "px"],
+        ["border-radius", radius + "px"],
+        ["clip-path", `inset(${cutTop}px ${cutRight}px ${cutBottom}px ${cutLeft}px round ${radius}px)`],
+        ["background-color", `rgba(${panel},${config.readingOpacity})`],
+        ["backdrop-filter", config.readingBlur > 0 ? `blur(${config.readingBlur}px)` : "none"],
+        ["-webkit-backdrop-filter", config.readingBlur > 0 ? `blur(${config.readingBlur}px)` : "none"],
+        ["mask-image", mask],
+        ["-webkit-mask-image", mask],
+        ["box-shadow", config.readingMode === "focus" ? "none" : `inset 0 0 0 1px rgba(${edge},${config.readingOpacity * 0.14})`]
+      ]});
+    }
+    for (const {element, properties, attach} of plans) {
+      for (const [property, value] of properties) readingStyle(element, property, value);
+      if (attach && !element.isConnected) layer.append(element);
     }
     if (refreshNeeded) scheduleSync();
   }
 
   function syncSurfaces() {
     if (!active || !document.body) return;
+    if (frame) cancelAnimationFrame(frame);
+    frame = 0;
     observeSettingsVisibility();
     const muted = isMutedRoute();
     if (muted) {
@@ -559,6 +606,8 @@
 
   function scheduleSync() {
     if (!active || frame) return;
+    if (readingGeometryFrame) cancelAnimationFrame(readingGeometryFrame);
+    readingGeometryFrame = 0;
     frame = requestAnimationFrame(() => { frame = 0; syncSurfaces(); });
   }
 
@@ -806,7 +855,15 @@ html[${ROOT_ATTRIBUTE}="${owner}"][${MUTED_ATTRIBUTE}="${owner}"] [data-chatgpt-
       treeObserver = new MutationObserver(records => {
         // Streaming text updates do not change layout ancestry. Re-scan only
         // when elements enter or leave the tree, rather than on every token.
-        if (records.some(record => [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1))) scheduleSync();
+        if (records.some(record => {
+          if (record.target === layer || layer?.contains(record.target)) {
+            // Our own plate changes are already synchronized. A plate still
+            // in the registry was removed externally and needs reattaching.
+            return [...record.removedNodes].some(node => readingElements.has(node));
+          }
+          // Removing the whole layer or stylesheet still reaches this path.
+          return [...record.addedNodes, ...record.removedNodes].some(node => node.nodeType === 1);
+        })) scheduleSync();
       });
       treeObserver.observe(document.documentElement, {childList: true, subtree: true});
       themeObserver = new MutationObserver(scheduleSync);

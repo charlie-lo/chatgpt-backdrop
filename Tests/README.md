@@ -14,6 +14,8 @@ node --test .github/scripts/codex-gate.test.cjs # Automatic merge policy
 
 These tests do not connect to, restart, or modify ChatGPT. The mock server uses a temporary local port; the scripts remove their temporary build output and fixtures.
 
+Reading performance checks use a warmed long-conversation fixture and count native rectangle/style reads and owned plate writes during controlled scrolling. These deterministic work counters validate reduced update work without relying on machine-specific timing. They do not measure FPS or GPU compositing cost in the user's live app. The same cases retain geometry, streaming, visibility recovery, ownership repair, GIF identity and restoration checks.
+
 The theme script runs the full suite twice: once with legacy `_Name_hash` module classes, then with the `Name-hash` classes used by ChatGPT 26.1029.61003. Run just the current format with `ThemeTests /absolute/path/to/theme.js --native-modules` when using a separately compiled harness. Only test-authored fixture tokens are converted; the engine is injected unchanged.
 
 Dots reading-mode cases model its separate embedded messaging viewport, transcript column and assistant text parts. They cover native-backplate replacement, independent reading controls, mode transitions, scrolling and new messages while preserving user colors and interactive content. Unsupported or protected messaging views remain outside the reading treatment.
